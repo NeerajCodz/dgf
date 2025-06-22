@@ -1,0 +1,63 @@
+[
+  {
+    "name": "GitHub",
+    "id": "github",
+    "public_token": "{{GITHUB_TOKEN}}",
+    "URL": {
+      "site": ["https://github.com"],
+      "raw": ["https://raw.githubusercontent.com"]
+    },
+    "URLStruc": {
+      "site": "https://github.com/<username>/<repo>",
+      "commit_folder": "https://github.com/<username>/<repo>/tree/<commit-id>/<path>",
+      "commit_file": "https://github.com/<username>/<repo>/blob/<commit-id>/<path>/<file>",
+      "branch_folder": "https://github.com/<username>/<repo>/tree/<branch>/<path>",
+      "branch_file":  "https://github.com/<username>/<repo>/blob/<branch>/<path>/<file>"
+    },
+    "rawURLStruc": {
+      "site": "https://raw.githubusercontent.com/<username>/<repo>/refs/heads/<branch>/<path>/<file>",
+      "commit": "https://raw.githubusercontent.com/<username>/<repo>/<commit-id>/<path>/<file>",
+      "branch": "https://raw.githubusercontent.com/<username>/<repo>/refs/heads/<branch>/<path>/<file>"
+    }
+  },
+  {
+    "name": "GitLab",
+    "id": "gitlab",
+    "public_token": "{{GITLAB_TOKEN}}",
+    "URL": {
+      "site": ["https://gitlab.com"],
+      "raw": ["https://gitlab.com"]
+    },
+    "URLStruc": {
+      "site": "https://gitlab.com/<username>/<repo>",
+      "commit_folder": "",
+      "commit_file": "",
+      "branch": ""
+    },
+    "rawURLStruc": {
+      "site": "https://gitlab.com/<username>/<repo>/-/raw/<branch>/<path>/<file>",
+      "commit": "https://gitlab.com/<username>/<repo>/-/raw/<commit-id>/<path>/<file>",
+      "branch": ""
+    }
+  },
+  {
+    "name": "Hugging Face",
+    "id": "huggingface",
+    "public_token": "{{HUGGINGFACE_TOKEN}}",
+    "URL": {
+      "site": ["https://huggingface.co"],
+      "raw": ["https://huggingface.co"]
+    },
+    "URLStruc": {
+      "site": "https://huggingface.co/<username>/<repo>",
+      "commit_folder": "",
+      "commit_file": "",
+      "branch": ""
+    },
+    "rawURLStruc": {
+      "site": "https://huggingface.co/<username>/<repo>/resolve/<branch>/<path>/<file>",
+      "commit": "https://huggingface.co/<username>/<repo>/resolve/<commit-id>/<path>/<file>",
+      "branch": ""
+    }
+  }
+]
