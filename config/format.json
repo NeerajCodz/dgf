@@ -1,0 +1,51 @@
+{
+  "formats": {
+    "image": [
+      "jpg", "jpeg", "png", "gif", "bmp", "webp", "tiff", "svg", "heic", "raw",
+      "ico", "psd", "ai", "eps", "svgz"
+    ],
+    "video": [
+      "mp4", "avi", "mkv", "mov", "wmv", "flv", "webm", "3gp", "m4v",
+      "mpeg", "mpg", "ogv"
+    ],
+    "audio": [
+      "mp3", "wav", "aac", "flac", "ogg", "m4a", "wma", "amr", "aiff", "opus"
+    ],
+    "document": [
+      "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "rtf",
+      "odt", "csv", "md", "epub"
+    ],
+    "archive": [
+      "zip", "rar", "7z", "tar", "gz", "bz2", "iso", "xz", "lz"
+    ],
+    "code": [
+      "html", "css", "js", "ts", "jsx", "tsx", "py", "java", "c", "cpp",
+      "go", "rs", "json", "xml", "yaml", "yml", "sh", "bat", "ps1",
+      "rb", "php", "pl", "kt", "dart"
+    ],
+    "e-books": [
+      "epub", "mobi", "azw3", "fb2", "lit"
+    ],
+    "fonts": [
+      "ttf", "otf", "woff", "woff2", "eot", "fon"
+    ],
+    "3d-models": [
+      "obj", "stl", "fbx", "gltf", "glb", "dae", "3ds", "blend"
+    ],
+    "spreadsheets": [
+      "xls", "xlsx", "ods", "csv"
+    ],
+    "presentations": [
+      "ppt", "pptx", "odp", "key"
+    ],
+    "databases": [
+      "sql", "sqlite", "db", "mdb"
+    ],
+    "executables": [
+      "exe", "apk", "dmg", "bin"
+    ],
+    "logs-config": [
+      "log", "env", "ini", "toml"
+    ]
+  }
+}

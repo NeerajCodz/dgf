@@ -1,0 +1,23 @@
+[
+  {
+    "name": "GitHub",
+    "id": "github",
+    "public_token": "{{GITHUB_TOKEN}}",
+    "URL": {
+      "site": ["https://github.com"],
+      "raw": ["https://raw.githubusercontent.com"]
+    },
+    "URLStruc": {
+      "site": "https://github.com/<username>/<repo>",
+      "commit_folder": "https://github.com/<username>/<repo>/tree/<commit-id>/<path>",
+      "commit_file": "https://github.com/<username>/<repo>/blob/<commit-id>/<path>/<file>",
+      "branch_folder": "https://github.com/<username>/<repo>/tree/<branch>/<path>",
+      "branch_file":  "https://github.com/<username>/<repo>/blob/<branch>/<path>/<file>"
+    },
+    "rawURLStruc": {
+      "site": "https://raw.githubusercontent.com/<username>/<repo>/refs/heads/<branch>/<path>/<file>",
+      "commit": "https://raw.githubusercontent.com/<username>/<repo>/<commit-id>/<path>/<file>",
+      "branch": "https://raw.githubusercontent.com/<username>/<repo>/refs/heads/<branch>/<path>/<file>"
+    }
+  }
+]
