@@ -94,7 +94,7 @@ The `--format` option accepts either a comma-separated list (e.g., `[pdf,jpg,go]
 - **presentations:** ppt, pptx, odp, key
 - **databases:** sql, sqlite, db, mdb
 - **executables:** exe, apk, dmg, bin
-- **logs-config:** log, env, ini, toml
+- **log:** log, env, ini, toml
 
 ## Examples
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -11,24 +12,19 @@ import (
 	"github.com/NeerajCodz/dgf/utils"
 )
 
+//go:embed config/git.json
+var configData []byte
+
 // main is the entry point of the dgf CLI tool
 func main() {
 	// Parse command-line arguments
 	args := ParseArgs()
 
-	// Read the platforms configuration from git.json
-	configData, err := os.ReadFile("config/git.json")
-	if err != nil {
-		if !args.NoPrint {
-			fmt.Fprintf(os.Stderr, "Error reading config file: %v\n", err)
-		}
-		os.Exit(1)
-	}
-
+	// Parse the embedded platforms configuration
 	var platforms []types.Platform
 	if err := json.Unmarshal(configData, &platforms); err != nil {
 		if !args.NoPrint {
-			fmt.Fprintf(os.Stderr, "Error parsing config file: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error parsing embedded config file: %v\n", err)
 		}
 		os.Exit(1)
 	}
