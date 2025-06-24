@@ -196,7 +196,19 @@ func fetchSingleFile(owner, repo, ref, path, token string) (types.GitHubContent,
 		return content, fmt.Errorf("%d %s: %s", resp.StatusCode, http.StatusText(resp.StatusCode), string(body))
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&content); err != nil {
+	// Read response body to check for array
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return content, fmt.Errorf("failed to read response body: %v", err)
+	}
+
+	// Check if response starts with '[' (indicating an array, i.e., directory)
+	if len(body) > 0 && body[0] == '[' {
+		return content, ErrPathNotFound // Treat as directory, not file
+	}
+
+	// Decode as single file
+	if err := json.Unmarshal(body, &content); err != nil {
 		return content, fmt.Errorf("failed to decode file details: %v", err)
 	}
 

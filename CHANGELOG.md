@@ -20,7 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
     - `document`: pdf, doc, docx, xls, xlsx, ppt, pptx, txt, rtf, odt, csv, md, epub  
     - `archive`: zip, rar, 7z, tar, gz, bz2, iso, xz, lz  
     - `code`: html, css, js, ts, jsx, tsx, py, java, c, cpp, go, rs, json, xml, yaml, yml, sh, bat, ps1, rb, php, pl, kt, dart  
-    - `e-books`, `fonts`, `3d-models`, `spreadsheets`, `presentations`, `databases`, `executables`, `logs-config`
+    - `e-books`, `fonts`, `3d-models`, `spreadsheets`, `presentations`, `databases`, `executables`, `log`
 - **Installer script**: `dgf-installer.sh` with options for version, OS, architecture, download-only, and no-rename.
 - **Command-line options**:
     - `--site, -s <site>`: Platform ID (github, gitlab, huggingface)

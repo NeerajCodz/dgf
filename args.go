@@ -1,6 +1,7 @@
 package main
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,6 +10,9 @@ import (
 	"github.com/NeerajCodz/dgf/types"
 	"github.com/spf13/pflag"
 )
+
+//go:embed config/format.json
+var formatsData []byte
 
 // ParseArgs parses command-line arguments into a types.Args struct
 func ParseArgs() types.Args {
@@ -49,7 +53,7 @@ Note: Only one of --no-print, --print-tree, --check, or --print-info can be prov
 	pflag.StringVarP(&args.Commit, "commit", "c", "", "Commit ID")
 	pflag.StringVarP(&args.Path, "path", "p", "", "Path in repository")
 	pflag.StringVarP(&args.Output, "output", "o", ".", "Output directory for downloads (default: current directory)")
-	pflag.StringVarP(&format, "format", "f", "", "File formats to include (e.g., image, [jpg,pdf,png])")
+	pflag.StringVarP(&format, "format", "f", "", "File formats to include (e.g., image, [jpg,png,pdf])")
 	pflag.BoolVarP(&args.NoPrint, "no-print", "n", false, "Suppress all output")
 	pflag.BoolVar(&args.PrintTree, "print-tree", false, "Print directory tree")
 	pflag.BoolVar(&args.Check, "check", false, "Check if path exists")
@@ -108,22 +112,16 @@ Note: Only one of --no-print, --print-tree, --check, or --print-info can be prov
 		args.URL = pflag.Arg(0)
 	}
 
-	// Process --format flag using config/format.json
+	// Process --format flag using embedded config/format.json
 	if format != "" {
 		if format == `""` || format == "" {
 			// Handle -f "" or -f=""
 			args.Formats = []string{""}
 		} else {
-			// Read formats configuration
-			formatsData, err := os.ReadFile("config/format.json")
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error reading format config file: %v\n", err)
-				os.Exit(1)
-			}
-
+			// Parse embedded formats configuration
 			var formatsMap map[string]map[string][]string
 			if err := json.Unmarshal(formatsData, &formatsMap); err != nil {
-				fmt.Fprintf(os.Stderr, "Error parsing format config file: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Error parsing embedded format config: %v\n", err)
 				os.Exit(1)
 			}
 

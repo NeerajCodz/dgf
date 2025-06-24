@@ -12,7 +12,7 @@ import (
 
 // FetchGitHubContents fetches directory contents from GitHub API
 func FetchGitHubContents(owner, repo, ref, path, token string) ([]types.GitHubContent, error) {
-	// Normalize repository name for API (GitHub is case-insensitive)
+	// Normalize repository name for API (case-insensitive)
 	owner = strings.ToLower(owner)
 	repo = strings.ToLower(repo)
 	api := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents", owner, repo)
@@ -29,7 +29,7 @@ func FetchGitHubContents(owner, repo, ref, path, token string) ([]types.GitHubCo
 
 	req.Header.Add("Accept", "application/vnd.github+json")
 	if token != "" {
-		req.Header.Add("Authorization", "token " + token) // Fixed: Correct string concatenation
+		req.Header.Add("Authorization", "token " + token)
 	}
 
 	client := &http.Client{}
@@ -55,7 +55,7 @@ func FetchGitHubContents(owner, repo, ref, path, token string) ([]types.GitHubCo
 }
 
 // getRequestType determines whether a path is a file or directory
-func getRequestType(owner, repo, ref, parentPath, requestPath, token string) (string, error) {
+func getRequestType(url string, owner, repo, ref, parentPath, requestPath, token string) (string, error) {
 	if requestPath == "" {
 		return "", nil
 	}
@@ -67,18 +67,10 @@ func getRequestType(owner, repo, ref, parentPath, requestPath, token string) (st
 	// Construct full path
 	fullPath := requestPath
 	if parentPath != "" {
-		fullPath = parentPath + "/" + requestPath // Fixed: Removed extra "/" in concatenation
+		fullPath = parentPath + "/" + requestPath
 	}
 
-	// First, try fetching as a directory
-	contents, err := FetchGitHubContents(owner, repo, ref, fullPath, token)
-	if err == nil && len(contents) > 0 {
-		return "dir", nil
-	} else if err != nil && err != ErrPathNotFound {
-		return "", fmt.Errorf("failed to fetch directory contents for path %s: %v", fullPath, err)
-	}
-
-	// If parentPath is provided, verify requestPath exists in parentPath
+	// If parentPath is provided, check its contents for requestPath
 	if parentPath != "" {
 		contents, err := FetchGitHubContents(owner, repo, ref, parentPath, token)
 		if err != nil {
@@ -95,16 +87,20 @@ func getRequestType(owner, repo, ref, parentPath, requestPath, token string) (st
 		return "", fmt.Errorf("request path %s not found in parent path %s", requestPath, parentPath)
 	}
 
-	// Try fetching as a file
-	content, err := fetchSingleFile(owner, repo, ref, fullPath, token) // Fixed: Corrected assignment to match return values
-	if err == nil {
-		if content.Type == "file" {
-			return "file", nil
-		}
-	} else if err == ErrPathNotFound {
-		return "", err
-	} else {
-		return "", fmt.Errorf("failed to determine type for path %s: %v", fullPath, err)
+	// If no parentPath, check if fullPath is a directory
+	contents, err := FetchGitHubContents(owner, repo, ref, fullPath, token)
+	if err == nil && len(contents) > 0 {
+		return "dir", nil
+	} else if err != nil && err != ErrPathNotFound {
+		return "", fmt.Errorf("failed to fetch directory contents for path %s: %v", fullPath, err)
+	}
+
+	// If not a directory, check if it's a file
+	content, err := fetchSingleFile(owner, repo, ref, fullPath, token)
+	if err == nil && content.Type == "file" {
+		return "file", nil
+	} else if err != ErrPathNotFound {
+		return "", fmt.Errorf("failed to fetch file details for path %s: %v", fullPath, err)
 	}
 
 	return "", ErrPathNotFound
