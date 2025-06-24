@@ -6,7 +6,7 @@ import (
 	"github.com/NeerajCodz/dgf/types"
 )
 
-// PrintGitHubInfo prints all values from the ParsedURL struct
+// PrintGitHubInfo prints all fields of a ParsedURL struct for debugging
 func PrintGitHubInfo(info types.ParsedURL) {
 	fmt.Printf("url: %s\n", info.URL)
 	fmt.Printf("name: %s\n", info.Name)

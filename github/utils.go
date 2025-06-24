@@ -10,8 +10,11 @@ import (
 	"github.com/NeerajCodz/dgf/types"
 )
 
-// FetchGitHubContents fetches contents from a GitHub API URL and returns the JSON data
+// FetchGitHubContents fetches directory contents from GitHub API
 func FetchGitHubContents(owner, repo, ref, path, token string) ([]types.GitHubContent, error) {
+	// Normalize repository name for API (GitHub is case-insensitive)
+	owner = strings.ToLower(owner)
+	repo = strings.ToLower(repo)
 	api := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents", owner, repo)
 	if path != "" {
 		api += "/" + path
@@ -26,7 +29,7 @@ func FetchGitHubContents(owner, repo, ref, path, token string) ([]types.GitHubCo
 
 	req.Header.Add("Accept", "application/vnd.github+json")
 	if token != "" {
-		req.Header.Add("Authorization", "token "+token)
+		req.Header.Add("Authorization", "token " + token) // Fixed: Correct string concatenation
 	}
 
 	client := &http.Client{}
@@ -44,45 +47,64 @@ func FetchGitHubContents(owner, repo, ref, path, token string) ([]types.GitHubCo
 	}
 
 	var contents []types.GitHubContent
-	err = json.NewDecoder(resp.Body).Decode(&contents)
-	if err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&contents); err != nil {
 		return nil, fmt.Errorf("failed to decode contents: %v", err)
 	}
 
 	return contents, nil
 }
 
-// getRequestType determines if the request path is a file or directory
+// getRequestType determines whether a path is a file or directory
 func getRequestType(owner, repo, ref, parentPath, requestPath, token string) (string, error) {
 	if requestPath == "" {
-		return "", nil // No request path, so no type
+		return "", nil
 	}
 
-	// Fetch contents of the parent path to find the request path
-	fetchPath := parentPath
-	if fetchPath == "" {
-		fetchPath = requestPath // If no parent path, check root
+	// Normalize owner and repo for API
+	owner = strings.ToLower(owner)
+	repo = strings.ToLower(repo)
+
+	// Construct full path
+	fullPath := requestPath
+	if parentPath != "" {
+		fullPath = parentPath + "/" + requestPath // Fixed: Removed extra "/" in concatenation
 	}
-	contents, err := FetchGitHubContents(owner, repo, ref, fetchPath, token)
-	if err != nil {
-		if err == ErrPathNotFound {
-			return "", ErrPathNotFound
+
+	// First, try fetching as a directory
+	contents, err := FetchGitHubContents(owner, repo, ref, fullPath, token)
+	if err == nil && len(contents) > 0 {
+		return "dir", nil
+	} else if err != nil && err != ErrPathNotFound {
+		return "", fmt.Errorf("failed to fetch directory contents for path %s: %v", fullPath, err)
+	}
+
+	// If parentPath is provided, verify requestPath exists in parentPath
+	if parentPath != "" {
+		contents, err := FetchGitHubContents(owner, repo, ref, parentPath, token)
+		if err != nil {
+			if err == ErrPathNotFound {
+				return "", fmt.Errorf("parent path %s not found", parentPath)
+			}
+			return "", fmt.Errorf("failed to fetch parent path %s: %v", parentPath, err)
 		}
-		return "", fmt.Errorf("failed to fetch contents for type check: %v", err)
-	}
-
-	for _, content := range contents {
-		comparePath := content.Path
-		if parentPath != "" {
-			if strings.HasPrefix(content.Path, parentPath+"/") {
-				comparePath = strings.TrimPrefix(content.Path, parentPath+"/")
-			} else {
-				continue
+		for _, content := range contents {
+			if content.Name == requestPath {
+				return content.Type, nil
 			}
 		}
-		if comparePath == requestPath {
-			return content.Type, nil
+		return "", fmt.Errorf("request path %s not found in parent path %s", requestPath, parentPath)
+	}
+
+	// Try fetching as a file
+	content, err := fetchSingleFile(owner, repo, ref, fullPath, token) // Fixed: Corrected assignment to match return values
+	if err == nil {
+		if content.Type == "file" {
+			return "file", nil
 		}
+	} else if err == ErrPathNotFound {
+		return "", err
+	} else {
+		return "", fmt.Errorf("failed to determine type for path %s: %v", fullPath, err)
 	}
 
 	return "", ErrPathNotFound

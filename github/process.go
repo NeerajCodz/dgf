@@ -11,15 +11,15 @@ import (
 
 var ErrPathNotFound = fmt.Errorf("path not found")
 
-// ProcessGitHubURL processes a GitHub URL by parsing it and fetching its structure
-func ProcessGitHubURL(url string, token string, branch string, commit string, path string, platform types.Platform) (types.ParsedURL, types.RepositoryStructure, error) {
-	// Parse basic URL components
-	parsed, err := ParseGitHubURL(url, platform)
+// ProcessGitHubURL processes a GitHub URL or site args, fetching the repository structure
+func ProcessGitHubURL(url, token, branch, commit, path string, platform types.Platform, args types.Args) (types.ParsedURL, types.RepositoryStructure, error) {
+	// Parse the URL or construct it from site args
+	parsed, err := ParseGitHubURL(url, platform, args)
 	if err != nil {
 		return parsed, types.RepositoryStructure{}, fmt.Errorf("failed to parse URL: %v", err)
 	}
 
-	// Override with provided values
+	// Override path if provided via --path
 	if path != "" {
 		parsed.Path = path
 		pathSegments := strings.Split(path, "/")
@@ -32,12 +32,14 @@ func ProcessGitHubURL(url string, token string, branch string, commit string, pa
 		}
 	}
 
-	// Determine ref
+	// Determine the reference (commit or branch)
 	var ref string
 	if commit != "" {
 		ref = commit
 		parsed.Commit = commit
 		parsed.Branch = ""
+	} else if parsed.Commit != "" {
+		ref = parsed.Commit
 	} else if branch != "" {
 		ref = branch
 		parsed.Branch = branch
@@ -52,24 +54,24 @@ func ProcessGitHubURL(url string, token string, branch string, commit string, pa
 		parsed.Branch = defaultBranch
 	}
 
-	// Reconstruct parsed.url with the final ref and path
+	// Reconstruct the parsed URL with ref and path
 	if parsed.Path != "" {
 		parsed.URL = fmt.Sprintf("https://github.com/%s/%s/tree/%s/%s", parsed.Username, parsed.Repo, ref, parsed.Path)
 	} else {
 		parsed.URL = fmt.Sprintf("https://github.com/%s/%s/tree/%s", parsed.Username, parsed.Repo, ref)
 	}
 
-	// Determine RequestType if Path is set
+	// Determine request type if a path is specified
 	if parsed.Path != "" {
 		requestType, err := getRequestType(parsed.Username, parsed.Repo, ref, parsed.ParentPath, parsed.RequestPath, token)
 		if err != nil {
-			return parsed, types.RepositoryStructure{}, fmt.Errorf("failed to determine request type: %v", err)
+			return parsed, types.RepositoryStructure{}, fmt.Errorf("failed to determine request type for path %s: %v", parsed.Path, err)
 		}
 		parsed.RequestType = requestType
 	}
 
-	// Fetch repository structure
-	structure, err := FetchGitHubStructure(parsed.Username, parsed.Repo, ref, parsed.Path, parsed.RequestType, token)
+	// Fetch the repository structure, passing args for format filtering
+	structure, err := FetchGitHubStructure(parsed.Username, parsed.Repo, ref, parsed.Path, parsed.RequestType, token, args)
 	if err != nil {
 		return parsed, structure, err
 	}
@@ -77,7 +79,7 @@ func ProcessGitHubURL(url string, token string, branch string, commit string, pa
 	return parsed, structure, nil
 }
 
-// fetchDefaultBranch fetches the default branch of a repository using the GitHub API
+// fetchDefaultBranch retrieves the default branch of a GitHub repository
 func fetchDefaultBranch(owner, repo, token string) (string, error) {
 	api := fmt.Sprintf("https://api.github.com/repos/%s/%s", owner, repo)
 	req, err := http.NewRequest("GET", api, nil)
@@ -104,8 +106,7 @@ func fetchDefaultBranch(owner, repo, token string) (string, error) {
 	var repoInfo struct {
 		DefaultBranch string `json:"default_branch"`
 	}
-	err = json.NewDecoder(resp.Body).Decode(&repoInfo)
-	if err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&repoInfo); err != nil {
 		return "", fmt.Errorf("failed to decode repo info: %v", err)
 	}
 
@@ -116,7 +117,7 @@ func fetchDefaultBranch(owner, repo, token string) (string, error) {
 	return repoInfo.DefaultBranch, nil
 }
 
-// PrintStructure prints the repository structure
+// PrintStructure prints the repository structure for debugging
 func PrintStructure(structure types.RepositoryStructure) {
 	fmt.Println("Files:")
 	for i, file := range structure.Files {
