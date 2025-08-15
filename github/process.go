@@ -63,7 +63,7 @@ func ProcessGitHubURL(url, token, branch, commit, path string, platform types.Pl
 
 	// Determine request type if a path is specified
 	if parsed.Path != "" {
-		requestType, err := getRequestType(parsed.Username, parsed.Repo, ref, parsed.ParentPath, parsed.RequestPath, token)
+		requestType, err := getRequestType(url, parsed.Username, parsed.Repo, ref, parsed.ParentPath, parsed.RequestPath, token)
 		if err != nil {
 			return parsed, types.RepositoryStructure{}, fmt.Errorf("failed to determine request type for path %s: %v", parsed.Path, err)
 		}

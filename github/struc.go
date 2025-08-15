@@ -13,11 +13,9 @@ import (
 
 // FetchGitHubStructure fetches the repository structure, filtering files by format if specified
 func FetchGitHubStructure(owner, repo, ref, path, requestType, token string, args types.Args) (types.RepositoryStructure, error) {
-	// Normalize owner and repo for API
 	owner = strings.ToLower(owner)
 	repo = strings.ToLower(repo)
 
-	// Determine parent path for relative path construction
 	var parentPath string
 	if path != "" {
 		pathSegments := strings.Split(path, "/")
@@ -26,7 +24,6 @@ func FetchGitHubStructure(owner, repo, ref, path, requestType, token string, arg
 		}
 	}
 
-	// Initialize an empty repository structure
 	structure := types.RepositoryStructure{
 		Files:        []string{},
 		FilesName:    []string{},
@@ -40,7 +37,7 @@ func FetchGitHubStructure(owner, repo, ref, path, requestType, token string, arg
 		FilesRequest: []string{},
 	}
 
-	// Handle single file request
+	// Single file request
 	if requestType == "file" && path != "" {
 		content, err := fetchSingleFile(owner, repo, ref, path, token)
 		if err != nil {
@@ -50,22 +47,11 @@ func FetchGitHubStructure(owner, repo, ref, path, requestType, token string, arg
 			return structure, fmt.Errorf("failed to fetch file details for %s: %v", path, err)
 		}
 
-		// Apply format filtering
-		if len(args.Formats) == 1 && args.Formats[0] == "" {
-			// -f "" means only files with no extension
-			if filepath.Ext(content.Name) != "" {
-				return structure, nil
-			}
-		} else if len(args.Formats) > 0 {
-			// -f image or -f [jpg,pdf]
-			ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(content.Name), "."))
-			if !contains(args.Formats, ext) {
-				return structure, nil
-			}
+		// Format filtering
+		if !matchesFormat(content.Name, args.Formats) {
+			return structure, nil
 		}
 
-		// Populate structure with file details
-		requestPath := content.Name
 		structure.Files = []string{path}
 		structure.FilesName = []string{content.Name}
 		structure.FilesSha = []string{content.Sha}
@@ -78,11 +64,11 @@ func FetchGitHubStructure(owner, repo, ref, path, requestType, token string, arg
 		} else {
 			structure.DownloadURLs = []string{""}
 		}
-		structure.FilesRequest = []string{requestPath}
+		structure.FilesRequest = []string{content.Name}
 		return structure, nil
 	}
 
-	// Fetch contents (root or specified path)
+	// Directory request
 	contents, err := FetchGitHubContents(owner, repo, ref, path, token)
 	if err != nil {
 		if err == ErrPathNotFound {
@@ -91,7 +77,6 @@ func FetchGitHubStructure(owner, repo, ref, path, requestType, token string, arg
 		return structure, fmt.Errorf("failed to fetch contents for path %s: %v", path, err)
 	}
 
-	// Process each item in the directory
 	for _, content := range contents {
 		itemPath := content.Path
 		var requestItemPath string
@@ -102,21 +87,10 @@ func FetchGitHubStructure(owner, repo, ref, path, requestType, token string, arg
 		}
 
 		if content.Type == "file" {
-			// Apply format filtering
-			if len(args.Formats) == 1 && args.Formats[0] == "" {
-				// -f "" means only files with no extension
-				if filepath.Ext(content.Name) != "" {
-					continue
-				}
-			} else if len(args.Formats) > 0 {
-				// -f image or -f [jpg,pdf]
-				ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(content.Name), "."))
-				if !contains(args.Formats, ext) {
-					continue
-				}
+			if !matchesFormat(content.Name, args.Formats) {
+				continue
 			}
 
-			// Add file to structure
 			structure.Files = append(structure.Files, itemPath)
 			structure.FilesName = append(structure.FilesName, content.Name)
 			structure.FilesSha = append(structure.FilesSha, content.Sha)
@@ -131,21 +105,13 @@ func FetchGitHubStructure(owner, repo, ref, path, requestType, token string, arg
 			}
 			structure.FilesRequest = append(structure.FilesRequest, requestItemPath)
 		} else if content.Type == "dir" {
-			// Add directory to structure only if it contains matching files
-			var folderRequestPath string
-			if parentPath != "" && strings.HasPrefix(itemPath, parentPath+"/") {
-				folderRequestPath = strings.TrimPrefix(itemPath, parentPath+"/")
-			} else {
-				folderRequestPath = itemPath
-			}
+			folderRequestPath := requestItemPath
 
-			// Recursively fetch subdirectory contents
 			subStructure, err := FetchGitHubStructure(owner, repo, ref, itemPath, "dir", token, args)
 			if err != nil {
 				return structure, err
 			}
 
-			// Only add folder if it contains files or subfolders with matching files
 			if len(subStructure.Files) > 0 || len(subStructure.Folders) > 0 {
 				structure.Folders = append(structure.Folders, folderRequestPath)
 				structure.Files = append(structure.Files, subStructure.Files...)
@@ -196,11 +162,31 @@ func fetchSingleFile(owner, repo, ref, path, token string) (types.GitHubContent,
 		return content, fmt.Errorf("%d %s: %s", resp.StatusCode, http.StatusText(resp.StatusCode), string(body))
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&content); err != nil {
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return content, fmt.Errorf("failed to read response body: %v", err)
+	}
+
+	if len(body) > 0 && body[0] == '[' {
+		return content, ErrPathNotFound
+	}
+
+	if err := json.Unmarshal(body, &content); err != nil {
 		return content, fmt.Errorf("failed to decode file details: %v", err)
 	}
 
 	return content, nil
+}
+
+// matchesFormat checks if the file matches the requested formats
+func matchesFormat(fileName string, formats []string) bool {
+	if len(formats) == 1 && formats[0] == "" {
+		return filepath.Ext(fileName) == ""
+	} else if len(formats) > 0 {
+		ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(fileName), "."))
+		return contains(formats, ext)
+	}
+	return true
 }
 
 // contains checks if a string slice contains a specific item

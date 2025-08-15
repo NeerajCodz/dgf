@@ -1,10 +1,11 @@
+
 #!/usr/bin/env bash
 set -e
 
 cd ..
 
 PROJECT_NAME="dgf"
-VERSION="1.0"
+VERSION="1.0.2"
 OUT_DIR="./build"
 mkdir -p "${OUT_DIR}"
 

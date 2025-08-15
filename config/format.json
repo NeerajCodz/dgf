@@ -44,7 +44,7 @@
     "executables": [
       "exe", "apk", "dmg", "bin"
     ],
-    "logs-config": [
+    "log": [
       "log", "env", "ini", "toml"
     ]
   }

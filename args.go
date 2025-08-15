@@ -1,6 +1,7 @@
 package main
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,12 +11,15 @@ import (
 	"github.com/spf13/pflag"
 )
 
+//go:embed config/format.json
+var formatsData []byte
+
 // ParseArgs parses command-line arguments into a types.Args struct
 func ParseArgs() types.Args {
 	var args types.Args
 	var format string // Temporary variable for --format flag
 
-	// Define custom usage message
+	// Custom usage message
 	pflag.Usage = func() {
 		fmt.Fprintf(os.Stderr, `Usage:
   ./dgf [ <URL> | -s <site> -u <username> -r <repo> ] [options]
@@ -40,7 +44,7 @@ Note: Only one of --no-print, --print-tree, --check, or --print-info can be prov
 `)
 	}
 
-	// Define command-line flags
+	// Define flags
 	pflag.StringVarP(&args.Site, "site", "s", "", "Platform ID (e.g., github, gitlab, huggingface)")
 	pflag.StringVarP(&args.Username, "username", "u", "", "Repository username")
 	pflag.StringVarP(&args.Repo, "repo", "r", "", "Repository name")
@@ -49,23 +53,22 @@ Note: Only one of --no-print, --print-tree, --check, or --print-info can be prov
 	pflag.StringVarP(&args.Commit, "commit", "c", "", "Commit ID")
 	pflag.StringVarP(&args.Path, "path", "p", "", "Path in repository")
 	pflag.StringVarP(&args.Output, "output", "o", ".", "Output directory for downloads (default: current directory)")
-	pflag.StringVarP(&format, "format", "f", "", "File formats to include (e.g., image, [jpg,pdf,png])")
+	pflag.StringVarP(&format, "format", "f", "", "File formats to include (e.g., image, [jpg,png,pdf])")
 	pflag.BoolVarP(&args.NoPrint, "no-print", "n", false, "Suppress all output")
 	pflag.BoolVar(&args.PrintTree, "print-tree", false, "Print directory tree")
 	pflag.BoolVar(&args.Check, "check", false, "Check if path exists")
 	pflag.BoolVarP(&args.PrintInfo, "print-info", "i", false, "Print info as JSON")
-
-	// Help flag
 	help := pflag.BoolP("help", "h", false, "Show this help message")
+
 	pflag.Parse()
 
-	// Show help and exit if --help is provided
+	// Handle help
 	if *help {
 		pflag.Usage()
 		os.Exit(0)
 	}
 
-	// Validate that only one of NoPrint, PrintTree, Check, or PrintInfo is set
+	// Validate output mode exclusivity
 	count := 0
 	if args.NoPrint {
 		count++
@@ -85,7 +88,7 @@ Note: Only one of --no-print, --print-tree, --check, or --print-info can be prov
 		os.Exit(1)
 	}
 
-	// Validate input: either URL or site args, but not both
+	// Validate input type
 	hasSiteArgs := args.Site != "" || args.Username != "" || args.Repo != ""
 	hasURL := pflag.NArg() == 1
 	if (hasSiteArgs && hasURL) || (!hasSiteArgs && !hasURL) {
@@ -95,47 +98,34 @@ Note: Only one of --no-print, --print-tree, --check, or --print-info can be prov
 	}
 
 	// If site args are provided, ensure all are present
-	if hasSiteArgs {
-		if args.Site == "" || args.Username == "" || args.Repo == "" {
-			fmt.Fprintf(os.Stderr, "Error: Must provide all of --site, --username, and --repo\n")
-			pflag.Usage()
-			os.Exit(1)
-		}
+	if hasSiteArgs && (args.Site == "" || args.Username == "" || args.Repo == "") {
+		fmt.Fprintf(os.Stderr, "Error: Must provide all of --site, --username, and --repo\n")
+		pflag.Usage()
+		os.Exit(1)
 	}
 
-	// Set URL from positional argument if provided
+	// Set URL from positional arg if provided
 	if hasURL {
 		args.URL = pflag.Arg(0)
 	}
 
-	// Process --format flag using config/format.json
+	// Process --format flag
 	if format != "" {
 		if format == `""` || format == "" {
-			// Handle -f "" or -f=""
 			args.Formats = []string{""}
 		} else {
-			// Read formats configuration
-			formatsData, err := os.ReadFile("config/format.json")
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error reading format config file: %v\n", err)
-				os.Exit(1)
-			}
-
 			var formatsMap map[string]map[string][]string
 			if err := json.Unmarshal(formatsData, &formatsMap); err != nil {
-				fmt.Fprintf(os.Stderr, "Error parsing format config file: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Error parsing embedded format config: %v\n", err)
 				os.Exit(1)
 			}
 
-			// Check if format is a category (e.g., "image")
 			if formats, exists := formatsMap["formats"][format]; exists {
-				// Ensure all extensions are lowercase
 				for i, ext := range formats {
 					formats[i] = strings.ToLower(ext)
 				}
 				args.Formats = formats
 			} else {
-				// Parse as a list (e.g., "[jpg,pdf,png]")
 				cleanFormat := strings.Trim(format, "[]")
 				if cleanFormat != "" {
 					extensions := strings.Split(cleanFormat, ",")
@@ -151,12 +141,12 @@ Note: Only one of --no-print, --print-tree, --check, or --print-info can be prov
 		}
 	}
 
-	// Normalize path by trimming slashes
+	// Normalize path
 	if args.Path != "" {
 		args.Path = strings.Trim(args.Path, "/")
 	}
 
-	// Set token from environment if not provided
+	// Use GITHUB_TOKEN from env if not set
 	if args.Token == "" {
 		args.Token = os.Getenv("GITHUB_TOKEN")
 	}
@@ -165,6 +155,6 @@ Note: Only one of --no-print, --print-tree, --check, or --print-info can be prov
 	if args.Output != "" {
 		args.Output = strings.TrimRight(args.Output, "/")
 	}
-	// fmt.Printf("DEBUG: Args = %+v\n", args)
+
 	return args
 }

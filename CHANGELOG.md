@@ -1,3 +1,30 @@
+#
+# [1.0.1] - 2025-08-15
+
+### Added
+
+- **Installer enhancements:**
+  - Seamless update support: installer checks for the latest version and updates only if needed.
+  - Robust uninstallation: `--uninstall`/`-u` flag to remove DGF from default or custom locations.
+  - Improved error handling, debug output, and file verification (size and SHA256 checksum).
+  - More flexible installation for Windows, Linux, macOS, and Android.
+- **Token support:**
+  - Provide a GitHub token via the `--token` flag or the `GITHUB_TOKEN` environment variable for private repositories. The flag takes precedence if both are set.
+- **Documentation:**
+  - Updated README with detailed installation, update, uninstall, and argument usage instructions, including token handling and all command-line options.
+- **New builds:**
+  - Binaries for: linux-amd64, linux-arm64, linux-arm, darwin-amd64, darwin-arm64, windows-amd64.exe, windows-arm64.exe, android-arm64.
+
+### Changed
+
+- Improved installer script logic and user feedback.
+- Expanded documentation for all command-line arguments and installer options.
+
+### Fixed
+
+- Patch fixes for installer reliability and platform compatibility.
+
+---
 # Changelog
 
 All notable changes to the DGF (Direct Git Fetch) project will be documented in this file.
@@ -20,7 +47,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
     - `document`: pdf, doc, docx, xls, xlsx, ppt, pptx, txt, rtf, odt, csv, md, epub  
     - `archive`: zip, rar, 7z, tar, gz, bz2, iso, xz, lz  
     - `code`: html, css, js, ts, jsx, tsx, py, java, c, cpp, go, rs, json, xml, yaml, yml, sh, bat, ps1, rb, php, pl, kt, dart  
-    - `e-books`, `fonts`, `3d-models`, `spreadsheets`, `presentations`, `databases`, `executables`, `logs-config`
+    - `e-books`, `fonts`, `3d-models`, `spreadsheets`, `presentations`, `databases`, `executables`, `log`
 - **Installer script**: `dgf-installer.sh` with options for version, OS, architecture, download-only, and no-rename.
 - **Command-line options**:
     - `--site, -s <site>`: Platform ID (github, gitlab, huggingface)
