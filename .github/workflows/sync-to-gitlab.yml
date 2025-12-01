@@ -1,0 +1,22 @@
+name: Mirror to GitLab
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Push to GitLab
+        run: |
+          git config --global user.email "github-actions@users.noreply.github.com"
+          git config --global user.name "GitHub Actions"
+          git remote add gitlab "${{ secrets.GITLAB_REPO }}"
+          git push --force --all "https://${{ secrets.GITLAB_TOKEN }}@${{ secrets.GITLAB_REPO }}"
+          git push --force --tags "https://${{ secrets.GITLAB_TOKEN }}@${{ secrets.GITLAB_REPO }}"
