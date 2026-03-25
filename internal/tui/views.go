@@ -483,32 +483,48 @@ func (m Model) viewHelp() string {
 func (m Model) viewDownload() string {
 	var b strings.Builder
 
-	title := TitleStyle.Render("Downloading...")
+	title := TitleStyle.Render("Downloading Files...")
 	b.WriteString(title)
 	b.WriteString("\n\n")
 
-	// Progress bar
-	barWidth := 40
+	// Progress bar with percentage
+	barWidth := 50
 	filled := int(m.state.DownloadProgress * float64(barWidth))
 	if filled > barWidth {
 		filled = barWidth
 	}
+	if filled < 0 {
+		filled = 0
+	}
 
 	bar := "[" + strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled) + "]"
-	b.WriteString(ProgressBarStyle.Render(bar))
+	percentage := int(m.state.DownloadProgress * 100)
+	progressLine := fmt.Sprintf("%s %3d%%", bar, percentage)
+	b.WriteString(ProgressBarStyle.Render(progressLine))
 	b.WriteString("\n\n")
 
-	// Progress info
-	info := fmt.Sprintf("%d / %d files", m.state.DownloadDone, m.state.DownloadTotal)
+	// Progress info: completed / total files
+	info := fmt.Sprintf("Files: %d / %d", m.state.DownloadDone, m.state.DownloadTotal)
 	b.WriteString(ProgressTextStyle.Render(info))
-	b.WriteString("\n")
+	b.WriteString("\n\n")
 
+	// Current file being downloaded
 	if m.state.DownloadCurrent != "" {
-		current := "Current: " + m.state.DownloadCurrent
-		if len(current) > m.width-10 {
-			current = current[:m.width-13] + "..."
+		currentLabel := "Current File:"
+		b.WriteString(StatusBarStyle.Render(currentLabel))
+		b.WriteString("\n")
+		
+		current := "  " + m.state.DownloadCurrent
+		// Truncate with ellipsis if too long
+		maxLen := m.width - 6
+		if len(current) > maxLen {
+			current = current[:maxLen-3] + "..."
 		}
 		b.WriteString(StatusBarStyle.Render(current))
+		b.WriteString("\n")
+	} else {
+		b.WriteString(StatusBarStyle.Render("Initializing download..."))
+		b.WriteString("\n")
 	}
 
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, b.String())

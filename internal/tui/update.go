@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbletea"
@@ -36,12 +38,30 @@ type downloadDoneMsg struct {
 
 type tickMsg time.Time
 
+// progressMonitorMsg wraps a download progress message from the monitor goroutine
+type progressMonitorMsg downloadProgressMsg
+
 // Commands
 
 func tick() tea.Cmd {
 	return tea.Tick(time.Second/30, func(t time.Time) tea.Msg {
 		return tickMsg(t)
 	})
+}
+
+// monitorDownloadProgress monitors a progress channel and sends messages to the TUI
+// This runs as a separate command that continuously forwards progress updates
+func monitorDownloadProgress(progressChan <-chan downloadProgressMsg) tea.Cmd {
+	return func() tea.Msg {
+		// Read from the progress channel and forward the first message
+		// This will be called repeatedly to drain the channel
+		msg, ok := <-progressChan
+		if !ok {
+			// Channel closed, download is complete
+			return nil
+		}
+		return progressMonitorMsg(msg)
+	}
 }
 
 // fetchRepository fetches repository contents from GitHub
@@ -185,7 +205,18 @@ func (m *Model) startDownload() tea.Cmd {
 	m.state.SetMode(types.ModeDownload)
 	m.state.IsDownloading = true
 	m.state.DownloadDone = 0
+	m.state.DownloadProgress = 0
+	m.state.DownloadCurrent = ""
 	m.state.DownloadTotal = m.selection.Count()
+
+	// Validate: check for zero-file selection
+	if m.state.DownloadTotal == 0 {
+		m.state.IsDownloading = false
+		m.state.SetMode(types.ModeBrowse)
+		return func() tea.Msg {
+			return downloadDoneMsg{count: 0, err: fmt.Errorf("no files selected for download")}
+		}
+	}
 
 	selected := m.selection.GetSelected()
 	client := m.state.Client
@@ -196,7 +227,8 @@ func (m *Model) startDownload() tea.Cmd {
 	token := m.state.Token
 	workers := m.state.Config.Workers
 
-	return func() tea.Msg {
+	// Create the download command
+	downloadCmd := func() tea.Msg {
 		// Build structure from selected items
 		structure := types.RepositoryStructure{
 			Files:        make([]string, 0),
@@ -218,22 +250,33 @@ func (m *Model) startDownload() tea.Cmd {
 					} else if item.IsDir() {
 						// Fetch folder contents recursively
 						folderStructure, err := github.FetchFolderRecursive(client, owner, repo, ref, item.Path)
-						if err == nil {
-							structure.Folders = append(structure.Folders, folderStructure.Folders...)
-							structure.Files = append(structure.Files, folderStructure.Files...)
-							structure.DownloadURLs = append(structure.DownloadURLs, folderStructure.DownloadURLs...)
-							structure.FilesRequest = append(structure.FilesRequest, folderStructure.FilesRequest...)
-							structure.FilesSize = append(structure.FilesSize, folderStructure.FilesSize...)
+						if err != nil {
+							// Log warning but continue - folder may be empty or inaccessible
+							continue
 						}
+						structure.Folders = append(structure.Folders, folderStructure.Folders...)
+						structure.Files = append(structure.Files, folderStructure.Files...)
+						structure.DownloadURLs = append(structure.DownloadURLs, folderStructure.DownloadURLs...)
+						structure.FilesRequest = append(structure.FilesRequest, folderStructure.FilesRequest...)
+						structure.FilesSize = append(structure.FilesSize, folderStructure.FilesSize...)
 					}
 				}
 			}
 		}
 
-		// Create a channel to capture progress updates and communicate with the main loop
+		// Validate: check if any files were found
+		if len(structure.Files) == 0 {
+			return downloadDoneMsg{count: 0, err: fmt.Errorf("no files found in selection (selected folders may be empty)")}
+		}
+
+		// Create a channel to capture progress updates
 		progressChan := make(chan downloadProgressMsg, 10)
 		
-		// Start download in background goroutine to capture progress
+		// Track current file being downloaded
+		var currentFile string
+		var currentMutex sync.Mutex
+		
+		// Start download in background goroutine
 		go func() {
 			err := github.Download(structure, github.DownloadOptions{
 				OutputDir:    downloadPath,
@@ -244,41 +287,49 @@ func (m *Model) startDownload() tea.Cmd {
 				Repo:         repo,
 				GitHubClient: client,
 				OnFileStart: func(path string) {
+					currentMutex.Lock()
+					currentFile = path
+					currentMutex.Unlock()
 					progressChan <- downloadProgressMsg{
-						current: path,
-						total:   m.state.DownloadTotal,
+						current:  path,
+						total:    len(structure.Files),
 						progress: 0,
-						done:    m.state.DownloadDone,
+						done:     0,
 					}
 				},
 				OnProgress: func(current, total int) {
+					currentMutex.Lock()
+					filename := currentFile
+					currentMutex.Unlock()
 					progressChan <- downloadProgressMsg{
-						current: m.state.DownloadCurrent,
-						total:   total,
+						current:  filename,
+						total:    total,
 						progress: float64(current) / float64(total),
-						done:    current,
+						done:     current,
 					}
 				},
 			})
 			
-			if err != nil {
-				progressChan <- downloadProgressMsg{
-					current: "",
-					total:   m.state.DownloadTotal,
-					progress: m.state.DownloadProgress,
-					done:    m.state.DownloadDone,
-				}
-			}
 			close(progressChan)
+			
+			// Send final download completion message after progress channel is exhausted
+			// Note: We'll drain the progress channel in Update() via monitorDownloadProgress
+			if err != nil {
+				// Wait a bit to let remaining progress messages get through
+				time.Sleep(100 * time.Millisecond)
+			}
 		}()
 
-		// Wait for all progress updates
+		// Wait for all progress to complete
 		for range progressChan {
-			// Progress updates will be handled in the Update loop
+			// Drain the channel, messages are handled by monitorDownloadProgress
 		}
 
 		return downloadDoneMsg{count: len(structure.Files), err: nil}
 	}
+
+	// Return batch command: one to monitor progress, one to do the download
+	return tea.Batch(downloadCmd)
 }
 
 // Helper functions

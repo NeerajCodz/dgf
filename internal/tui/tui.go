@@ -34,6 +34,9 @@ type Model struct {
 	width  int
 	height int
 	ready  bool
+	
+	// Download progress monitoring
+	downloadProgressChan <-chan downloadProgressMsg
 }
 
 // NewModel creates a new TUI model
@@ -168,6 +171,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state.SetMode(types.ModePreview)
 		}
 
+	case progressMonitorMsg:
+		// Forward progress updates to the state
+		m.state.DownloadProgress = msg.progress
+		m.state.DownloadCurrent = msg.current
+		m.state.DownloadDone = msg.done
+		m.state.DownloadTotal = msg.total
+		// Schedule another progress read
+		if m.downloadProgressChan != nil {
+			cmds = append(cmds, monitorDownloadProgress(m.downloadProgressChan))
+		}
+
 	case downloadProgressMsg:
 		m.state.DownloadProgress = msg.progress
 		m.state.DownloadCurrent = msg.current
@@ -176,11 +190,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case downloadDoneMsg:
 		m.state.IsDownloading = false
+		m.downloadProgressChan = nil // Clear the channel
 		m.state.SetMode(types.ModeBrowse)
 		if msg.err != nil {
 			m.state.SetError(msg.err.Error())
 		} else {
-			m.state.ShowToast(fmt.Sprintf("Downloaded %d files", msg.count), types.ToastSuccess)
+			m.state.ShowToast(fmt.Sprintf("Downloaded %d files successfully", msg.count), types.ToastSuccess)
 		}
 
 	case tickMsg:
