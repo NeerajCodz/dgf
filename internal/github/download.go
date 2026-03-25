@@ -58,18 +58,20 @@ func Download(structure types.RepositoryStructure, opts DownloadOptions) error {
 		}
 	}
 
-	// Download files with worker pool
+	// Download files with worker pool and retry logic
 	var wg sync.WaitGroup
 	var completed int32
 	errors := make([]error, 0)
 	var errMu sync.Mutex
 
-	// Create job channel
+	// Create job channel with file indices
 	jobs := make(chan int, totalFiles)
 	for i := 0; i < totalFiles; i++ {
 		jobs <- i
 	}
 	close(jobs)
+
+	const maxRetries = 3
 
 	// Start workers
 	for w := 0; w < opts.Workers; w++ {
@@ -86,24 +88,33 @@ func Download(structure types.RepositoryStructure, opts DownloadOptions) error {
 					opts.OnFileStart(structure.FilesRequest[i])
 				}
 
+				// Retry logic: attempt up to maxRetries times
 				var err error
-				if downloadURL != "" {
-					err = downloadFileWithOptions(client, DownloadFileOptions{
-						URL:          downloadURL,
-						DestPath:     filePath,
-						Token:        opts.Token,
-						Owner:        opts.Owner,
-						Repo:         opts.Repo,
-						CheckLFS:     opts.CheckLFS,
-						GitHubClient: opts.GitHubClient,
-					})
-				} else {
-					err = fmt.Errorf("no download URL")
+				for attempt := 0; attempt < maxRetries; attempt++ {
+					if downloadURL != "" {
+						err = downloadFileWithOptions(client, DownloadFileOptions{
+							URL:          downloadURL,
+							DestPath:     filePath,
+							Token:        opts.Token,
+							Owner:        opts.Owner,
+							Repo:         opts.Repo,
+							CheckLFS:     opts.CheckLFS,
+							GitHubClient: opts.GitHubClient,
+						})
+						if err == nil {
+							// Success, break out of retry loop
+							break
+						}
+						// On failure, will retry unless it's the last attempt
+					} else {
+						err = fmt.Errorf("no download URL")
+						break // Don't retry if there's no URL
+					}
 				}
 
 				if err != nil {
 					errMu.Lock()
-					errors = append(errors, fmt.Errorf("%s: %v", structure.FilesRequest[i], err))
+					errors = append(errors, fmt.Errorf("%s (after %d retries): %v", structure.FilesRequest[i], maxRetries, err))
 					errMu.Unlock()
 				}
 

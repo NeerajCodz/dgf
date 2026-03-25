@@ -9,10 +9,12 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"golang.design/x/clipboard"
 
 	"github.com/NeerajCodz/dgf/internal/config"
 	"github.com/NeerajCodz/dgf/internal/github"
 	"github.com/NeerajCodz/dgf/internal/selection"
+	"github.com/NeerajCodz/dgf/internal/utils"
 	"github.com/NeerajCodz/dgf/pkg/types"
 )
 
@@ -317,9 +319,37 @@ func (m *Model) handleBrowseKeys(key string) tea.Cmd {
 		return m.navigateBack()
 	case "d":
 		if m.selection.HasSelection() {
-			return m.startDownload()
+			// Show confirmation dialog
+			count := m.selection.Count()
+			fileSizes := make([]int, 0)
+			for _, path := range m.selection.GetSelected() {
+				for _, item := range m.state.Items {
+					if item.Path == path {
+						fileSizes = append(fileSizes, int(item.Size))
+						break
+					}
+				}
+			}
+			formattedSize := utils.FormatSize(fileSizes)
+			m.state.ConfirmDownload = true
+			m.state.ConfirmDownloadSize = formattedSize
+			m.state.ShowToast(fmt.Sprintf("Download %d items (%s)? Press 'c' to confirm or 'd' to cancel", count, formattedSize), types.ToastInfo)
 		} else {
 			m.state.ShowToast("No items selected", types.ToastWarning)
+		}
+	case "c":
+		if m.state.ConfirmDownload {
+			m.state.ConfirmDownload = false
+			return m.startDownload()
+		}
+	case "y":
+		if item := m.state.CurrentItem(); item != nil {
+			err := clipboard.Write(clipboard.FmtText, []byte(item.Path))
+			if err != nil {
+				m.state.ShowToast("Failed to copy to clipboard", types.ToastError)
+			} else {
+				m.state.ShowToast(fmt.Sprintf("Copied to clipboard: %s", item.Path), types.ToastSuccess)
+			}
 		}
 	case "p":
 		if item := m.state.CurrentItem(); item != nil && item.IsFile() {
@@ -343,6 +373,11 @@ func (m *Model) handleBrowseKeys(key string) tea.Cmd {
 		m.state.SetMode(types.ModeHelp)
 	case "q", "ctrl+c":
 		return tea.Quit
+	}
+
+	// Ensure cursor stays within filtered results bounds
+	if m.state.Cursor >= itemCount && itemCount > 0 {
+		m.state.Cursor = itemCount - 1
 	}
 
 	return nil

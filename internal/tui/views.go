@@ -178,13 +178,13 @@ func (m Model) renderItem(item types.RepoItem, isCursor bool, icons IconSet) str
 	var icon, name string
 	if item.IsDir() {
 		icon = icons.Folder
-		name = FolderStyle.Render(item.Name + "/")
+		name = m.highlightMatches(item.Name+"/", FolderStyle, isCursor)
 	} else {
 		icon = icons.File
 		if item.IsLFS {
 			icon = icons.LFS
 		}
-		name = FileStyle.Render(item.Name)
+		name = m.highlightMatches(item.Name, FileStyle, isCursor)
 	}
 
 	// Size (for files)
@@ -209,6 +209,60 @@ func (m Model) renderItem(item types.RepoItem, isCursor bool, icons IconSet) str
 	}
 
 	return "  " + lineContent
+}
+
+// highlightMatches highlights search query characters in the text
+func (m Model) highlightMatches(text string, baseStyle lipgloss.Style, isCursor bool) string {
+	// If no search query, return styled text as-is
+	if m.state.SearchQuery == "" {
+		return baseStyle.Render(text)
+	}
+
+	query := strings.ToLower(m.state.SearchQuery)
+	
+	// Find all match positions
+	var result strings.Builder
+	lastPos := 0
+	highlightStyle := baseStyle.Copy().Bold(true).Foreground(ColorHighlight)
+	
+	for i := 0; i < len(text); i++ {
+		// Look for next match starting at current position in query
+		found := false
+		for j := i; j < len(text); j++ {
+			if j-i < len(query) && strings.ToLower(string(text[j])) == string(query[j-i]) {
+				if j-i == len(query)-1 {
+					// Full query matched
+					// Add non-matching part before match
+					if lastPos < i {
+						result.WriteString(baseStyle.Render(text[lastPos:i]))
+					}
+					// Add highlighted match
+					result.WriteString(highlightStyle.Render(text[i : j+1]))
+					lastPos = j + 1
+					i = j
+					found = true
+					break
+				}
+			} else {
+				break
+			}
+		}
+		if found {
+			break
+		}
+	}
+	
+	// Add remaining text
+	if lastPos < len(text) {
+		result.WriteString(baseStyle.Render(text[lastPos:]))
+	}
+	
+	// If nothing was added, just return the styled text
+	if result.Len() == 0 {
+		return baseStyle.Render(text)
+	}
+	
+	return result.String()
 }
 
 // renderStatusBar renders the bottom status bar

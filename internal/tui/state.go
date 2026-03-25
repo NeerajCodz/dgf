@@ -45,12 +45,14 @@ type AppState struct {
 	PreviewScroll  int
 
 	// Download
-	DownloadPath     string
-	DownloadProgress float64
-	DownloadCurrent  string
-	DownloadTotal    int
-	DownloadDone     int
-	IsDownloading    bool
+	DownloadPath       string
+	DownloadProgress   float64
+	DownloadCurrent    string
+	DownloadTotal      int
+	DownloadDone       int
+	IsDownloading      bool
+	ConfirmDownload    bool
+	ConfirmDownloadSize  string
 
 	// UI
 	ASCIIMode   bool

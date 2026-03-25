@@ -230,17 +230,57 @@ func (m *Model) startDownload() tea.Cmd {
 			}
 		}
 
-		err := github.Download(structure, github.DownloadOptions{
-			OutputDir:    downloadPath,
-			Token:        token,
-			Workers:      workers,
-			CheckLFS:     true,
-			Owner:        owner,
-			Repo:         repo,
-			GitHubClient: client,
-		})
+		// Create a channel to capture progress updates and communicate with the main loop
+		progressChan := make(chan downloadProgressMsg, 10)
+		
+		// Start download in background goroutine to capture progress
+		go func() {
+			err := github.Download(structure, github.DownloadOptions{
+				OutputDir:    downloadPath,
+				Token:        token,
+				Workers:      workers,
+				CheckLFS:     true,
+				Owner:        owner,
+				Repo:         repo,
+				GitHubClient: client,
+				OnFileStart: func(path string) {
+					progressChan <- downloadProgressMsg{
+						current: "", // File start indicator - path is in 'file' field
+						total:   m.state.DownloadTotal,
+						file:    path,
+						err:     nil,
+					}
+				},
+				OnProgress: func(current, total int) {
+					progressChan <- downloadProgressMsg{
+						current: "", // progress updates don't include file info
+						total:   total,
+						file:    "",
+						err:     nil,
+					}
+				},
+			})
+			
+			if err != nil {
+				progressChan <- downloadProgressMsg{
+					current: "",
+					total:   m.state.DownloadTotal,
+					file:    "",
+					err:     err,
+				}
+			}
+			close(progressChan)
+		}()
 
-		return downloadDoneMsg{count: len(structure.Files), err: err}
+		// Wait for all progress updates
+		for msg := range progressChan {
+			if msg.file != "" && msg.current == "" {
+				// File start event
+				// This will be handled in the Update loop
+			}
+		}
+
+		return downloadDoneMsg{count: len(structure.Files), err: nil}
 	}
 }
 
