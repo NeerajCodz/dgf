@@ -25,49 +25,87 @@ const logo = `
 Direct Git Fetch v2.0
 `
 
-// viewInput renders the URL input screen
+// viewInput renders the URL input screen with better guidance
 func (m Model) viewInput() string {
 	var b strings.Builder
 
-	// Logo
+	// Centered logo with enhanced styling
 	logoStyle := lipgloss.NewStyle().
-		Foreground(ColorHighlight).
+		Foreground(ColorLogo).
 		Bold(true).
 		Align(lipgloss.Center)
 
-	centeredLogo := lipgloss.PlaceHorizontal(m.width, lipgloss.Center, logoStyle.Render(logo))
-	b.WriteString(centeredLogo)
+	enhancedLogo := `
+    ____  ____________
+   / __ \/ ____/ ____/
+  / / / / / __/ /_    
+ / /_/ / /_/ / __/    
+/_____/\____/_/       
+                      
+ v2.0 • Terminal UI
+`
+	
+	b.WriteString(logoStyle.Render(enhancedLogo))
 	b.WriteString("\n\n")
 
-	// Instructions
-	instructionStyle := lipgloss.NewStyle().
-		Foreground(ColorSubtle).
+	// Tagline
+	taglineStyle := lipgloss.NewStyle().
+		Foreground(ColorAccent).
+		Italic(true).
 		Align(lipgloss.Center)
 
-	b.WriteString(instructionStyle.Render("Enter a GitHub repository URL to browse"))
+	b.WriteString(taglineStyle.Render("Download files from GitHub repos without full clones"))
 	b.WriteString("\n\n")
 
-	// URL input
-	inputBox := InputFocusedStyle.
-		Width(60).
-		Align(lipgloss.Center).
-		Render(m.urlInput.View())
+	// URL input box with better styling
+	inputBoxStyle := InputFocusedStyle.
+		Width(70).
+		Align(lipgloss.Center)
 
-	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, inputBox))
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, inputBoxStyle.Render(m.urlInput.View())))
 	b.WriteString("\n\n")
 
-	// Hints
-	hintStyle := lipgloss.NewStyle().Foreground(ColorSubtle)
+	// Enhanced hints section
+	hintTitleStyle := lipgloss.NewStyle().
+		Foreground(ColorSuccess).
+		Bold(true)
+	
+	hintStyle := lipgloss.NewStyle().
+		Foreground(ColorSubtle)
+	
+	exampleStyle := lipgloss.NewStyle().
+		Foreground(ColorInfo)
+
 	hints := []string{
-		"Examples:",
-		"  github.com/charmbracelet/bubbletea",
-		"  https://github.com/golang/go/tree/master/src",
+		hintTitleStyle.Render("📝 Examples:"),
+		exampleStyle.Render("  • github.com/charmbracelet/bubbletea"),
+		exampleStyle.Render("  • https://github.com/golang/go/tree/master/src"),
+		exampleStyle.Render("  • github.com/user/repo/tree/branch/path"),
 		"",
-		"Press Enter to browse  •  ? for help  •  q to quit",
+		hintStyle.Render("💡 Tip: Paste any GitHub URL and press Enter"),
+		"",
+		hintTitleStyle.Render("⌨️  Controls:"),
+		hintStyle.Render("  Enter: Browse repository  •  ?: Help  •  q: Quit"),
 	}
+
 	for _, hint := range hints {
-		b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, hintStyle.Render(hint)))
+		b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, hint))
 		b.WriteString("\n")
+	}
+
+	// Show error if present
+	if m.state.Error != "" {
+		b.WriteString("\n")
+		errorBox := lipgloss.NewStyle().
+			Background(ColorError).
+			Foreground(ColorBackground).
+			Bold(true).
+			Padding(0, 2).
+			Width(70).
+			Align(lipgloss.Center).
+			Render("❌ " + m.state.Error)
+		
+		b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, errorBox))
 	}
 
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, b.String())
@@ -478,23 +516,28 @@ func highlightCode(content string, filePath string) string {
 	return buf.String()
 }
 
-// viewPreview renders the file preview modal
+// viewPreview renders the file preview modal with line numbers
 func (m Model) viewPreview() string {
 	var b strings.Builder
 
-	// Title
-	title := PreviewTitleStyle.Render("Preview: " + m.state.PreviewPath)
-	b.WriteString(title)
-	b.WriteString("\n")
-	b.WriteString(strings.Repeat("─", m.width-4))
+	// Title bar with file info
+	titleBar := lipgloss.NewStyle().
+		Background(ColorAccent).
+		Foreground(ColorBackground).
+		Bold(true).
+		Padding(0, 2).
+		Width(m.width - 4)
+	
+	fileInfo := fmt.Sprintf("📄 %s", m.state.PreviewPath)
+	b.WriteString(titleBar.Render(fileInfo))
 	b.WriteString("\n")
 
 	// Apply syntax highlighting
 	highlightedContent := highlightCode(m.state.PreviewContent, m.state.PreviewPath)
 	
-	// Content
+	// Content with line numbers
 	lines := strings.Split(highlightedContent, "\n")
-	maxLines := m.height - 8
+	maxLines := m.height - 10
 	if maxLines < 5 {
 		maxLines = 5
 	}
@@ -512,101 +555,169 @@ func (m Model) viewPreview() string {
 		end = len(lines)
 	}
 
+	// Line number styling
+	lineNumStyle := lipgloss.NewStyle().
+		Foreground(ColorSubtle).
+		Width(5).
+		Align(lipgloss.Right)
+	
+	contentWidth := m.width - 12 // Account for line numbers and padding
+
 	for i := start; i < end; i++ {
+		lineNum := lineNumStyle.Render(fmt.Sprintf("%d", i+1))
 		line := lines[i]
-		if len(line) > m.width-4 {
-			line = line[:m.width-7] + "..."
+		
+		// Truncate if too long
+		if len(line) > contentWidth {
+			line = line[:contentWidth-3] + "..."
 		}
-		b.WriteString(PreviewContentStyle.Render(line))
+		
+		lineContent := fmt.Sprintf("%s │ %s", lineNum, line)
+		b.WriteString(lineContent)
 		b.WriteString("\n")
 	}
 
-	// Footer
+	// Footer with navigation info
 	b.WriteString("\n")
-	b.WriteString(strings.Repeat("─", m.width-4))
-	b.WriteString("\n")
-
-	scrollInfo := fmt.Sprintf("Line %d-%d of %d", start+1, end, len(lines))
-	hints := "↑/↓: scroll │ Esc: close"
-	footer := StatusBarStyle.Render(scrollInfo + "  │  " + hints)
-	b.WriteString(footer)
+	footerStyle := lipgloss.NewStyle().
+		Background(ColorBorder).
+		Foreground(ColorForeground).
+		Padding(0, 2).
+		Width(m.width - 4)
+	
+	scrollInfo := fmt.Sprintf("Lines %d-%d of %d", start+1, end, len(lines))
+	hints := "  │  ↑↓: scroll  │  ESC: close  │  ?: help"
+	footer := scrollInfo + hints
+	b.WriteString(footerStyle.Render(footer))
 
 	// Wrap in modal border
-	return ModalStyle.
-		Width(m.width - 4).
+	return BorderStyle.
+		BorderForeground(ColorAccent).
+		Width(m.width - 2).
 		Height(m.height - 2).
+		Padding(1).
 		Render(b.String())
 }
 
-// viewHelp renders the help screen
+// viewHelp renders the enhanced help screen
 func (m Model) viewHelp() string {
 	var b strings.Builder
 
-	title := TitleStyle.Render("dgf Help - Keyboard Shortcuts")
-	b.WriteString(title)
+	// Header
+	headerStyle := lipgloss.NewStyle().
+		Background(ColorAccent).
+		Foreground(ColorBackground).
+		Bold(true).
+		Padding(0, 2).
+		Width(m.width - 8)
+	
+	b.WriteString(headerStyle.Render("⌨️  DGF Keyboard Shortcuts & Help"))
 	b.WriteString("\n\n")
 
+	// Sections with enhanced styling
+	sectionTitleStyle := lipgloss.NewStyle().
+		Foreground(ColorAccent).
+		Bold(true).
+		Underline(true)
+	
+	keyStyle := lipgloss.NewStyle().
+		Foreground(ColorSuccess).
+		Bold(true).
+		Width(18)
+	
+	descStyle := lipgloss.NewStyle().
+		Foreground(ColorForeground)
+
 	sections := []struct {
-		name  string
+		name     string
 		bindings []struct{ key, desc string }
 	}{
 		{
-			name: "Navigation",
+			name: "🧭 Navigation",
 			bindings: []struct{ key, desc string }{
-				{"↑", "Move up"},
-				{"↓", "Move down"},
-				{"J/←", "Go back"},
-				{"L/→", "Enter folder"},
-				{"Home/g", "Go to top"},
-				{"End/G", "Go to bottom"},
+				{"↑ / ↓", "Move cursor up/down"},
+				{"Home / g", "Jump to top"},
+				{"End / G", "Jump to bottom"},
+				{"J / ←", "Go back to parent folder"},
+				{"L / →", "Enter selected folder"},
 			},
 		},
 		{
-			name: "Selection",
+			name: "✓ Selection",
 			bindings: []struct{ key, desc string }{
-				{"K/Space", "Toggle selection"},
-				{"a", "Select all"},
-				{"u", "Unselect all"},
-				{"I", "Inverse (confirm)"},
+				{"K / Space", "Toggle selection of current item"},
+				{"a", "Select all items"},
+				{"u", "Unselect all items"},
+				{"I (twice)", "Invert selection (with confirmation)"},
 			},
 		},
 		{
-			name: "Actions",
+			name: "⚡ Actions",
 			bindings: []struct{ key, desc string }{
-				{"Enter", "Download selected (confirm)"},
-				{"p", "Preview file"},
-				{"/", "Search"},
-				{"r", "Refresh"},
-				{"o", "Toggle icons"},
+				{"Enter", "Download selected items"},
+				{"p", "Preview file content"},
+				{"/", "Search files"},
+				{"r", "Refresh current view"},
+				{"o", "Toggle icon mode (emoji/ASCII)"},
+				{"y", "Copy current item path to clipboard"},
 			},
 		},
 		{
-			name: "General",
+			name: "ℹ️  General",
 			bindings: []struct{ key, desc string }{
-				{"?", "Toggle help"},
-				{"Esc", "Close/Cancel"},
-				{"q/Ctrl+C", "Quit"},
+				{"?", "Toggle this help screen"},
+				{"Esc", "Cancel/Close/Back"},
+				{"q / Ctrl+C", "Quit application"},
 			},
 		},
 	}
 
 	for _, section := range sections {
-		b.WriteString(SubtitleStyle.Render(section.name))
+		b.WriteString(sectionTitleStyle.Render(section.name))
 		b.WriteString("\n")
 		for _, binding := range section.bindings {
-			key := HelpKeyStyle.Width(20).Render(binding.key)
-			desc := HelpDescStyle.Render(binding.desc)
-			b.WriteString(fmt.Sprintf("  %s %s\n", key, desc))
+			key := keyStyle.Render("  " + binding.key)
+			desc := descStyle.Render(binding.desc)
+			b.WriteString(fmt.Sprintf("%s  %s\n", key, desc))
 		}
 		b.WriteString("\n")
 	}
 
+	// Tips section
+	b.WriteString(sectionTitleStyle.Render("💡 Tips"))
 	b.WriteString("\n")
-	b.WriteString(StatusBarStyle.Render("Press Esc or ? to close"))
+	
+	tipStyle := lipgloss.NewStyle().
+		Foreground(ColorInfo).
+		Italic(true)
+	
+	tips := []string{
+		"• Use [●] markers to see which items are selected",
+		"• Download directory can be set via 'dgf config set download_path <path>'",
+		"• Support for GitHub tokens: 'dgf config set github_token <token>'",
+		"• Press Enter twice when downloading to confirm your selection",
+		"• Search is case-insensitive and matches filenames",
+	}
+	
+	for _, tip := range tips {
+		b.WriteString(tipStyle.Render("  "+tip))
+		b.WriteString("\n")
+	}
 
-	return ModalStyle.
-		Width(m.width - 8).
+	b.WriteString("\n")
+	
+	// Footer
+	footerStyle := lipgloss.NewStyle().
+		Foreground(ColorSubtle).
+		Italic(true)
+	b.WriteString(footerStyle.Render("Press Esc or ? to close this help screen"))
+
+	// Wrap in modal
+	return BorderStyle.
+		BorderForeground(ColorAccent).
+		Width(m.width - 6).
 		Height(m.height - 4).
+		Padding(2).
 		Render(b.String())
 }
 
