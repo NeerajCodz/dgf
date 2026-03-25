@@ -280,3 +280,39 @@ func TestSetHeaders_WithoutToken(t *testing.T) {
 		t.Errorf("Expected no Authorization header, got %s", auth)
 	}
 }
+
+func TestDoWithAuthFallback_RetriesWithoutAuthorizationOn401(t *testing.T) {
+	callCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		if r.Header.Get("Authorization") != "" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("invalid-token")
+	client.httpClient = server.Client()
+
+	req, err := http.NewRequest("GET", server.URL, nil)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+	client.setHeaders(req)
+
+	resp, err := client.doWithAuthFallback(req)
+	if err != nil {
+		t.Fatalf("doWithAuthFallback failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected 200 status after fallback, got %d", resp.StatusCode)
+	}
+	if callCount != 2 {
+		t.Fatalf("Expected 2 requests (initial + fallback), got %d", callCount)
+	}
+}

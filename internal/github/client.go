@@ -29,6 +29,26 @@ func (c *Client) SetToken(token string) {
 	c.token = token
 }
 
+// doWithAuthFallback executes a request and retries once without Authorization
+// if GitHub returns 401 for an authenticated request.
+// This helps when a stale/invalid token is configured but the target repository is public.
+func (c *Client) doWithAuthFallback(req *http.Request) (*http.Response, error) {
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode == http.StatusUnauthorized && c.token != "" {
+		resp.Body.Close()
+		retryReq := req.Clone(req.Context())
+		retryReq.Header = req.Header.Clone()
+		retryReq.Header.Del("Authorization")
+		return c.httpClient.Do(retryReq)
+	}
+
+	return resp, nil
+}
+
 // FetchContents fetches directory contents from GitHub API
 func (c *Client) FetchContents(owner, repo, ref, path string) ([]types.GitHubContent, error) {
 	owner = strings.ToLower(owner)
@@ -49,7 +69,7 @@ func (c *Client) FetchContents(owner, repo, ref, path string) ([]types.GitHubCon
 
 	c.setHeaders(req)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doWithAuthFallback(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch contents: %v", err)
 	}
@@ -59,6 +79,8 @@ func (c *Client) FetchContents(owner, repo, ref, path string) ([]types.GitHubCon
 		return nil, ErrPathNotFound
 	} else if resp.StatusCode == 403 {
 		return nil, ErrRateLimited
+	} else if resp.StatusCode == 401 {
+		return nil, ErrUnauthorized
 	} else if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("%d %s: %s", resp.StatusCode, http.StatusText(resp.StatusCode), string(body))
@@ -88,7 +110,7 @@ func (c *Client) FetchFile(owner, repo, ref, path string) (types.GitHubContent, 
 
 	c.setHeaders(req)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doWithAuthFallback(req)
 	if err != nil {
 		return content, fmt.Errorf("failed to fetch file: %v", err)
 	}
@@ -98,6 +120,8 @@ func (c *Client) FetchFile(owner, repo, ref, path string) (types.GitHubContent, 
 		return content, ErrPathNotFound
 	} else if resp.StatusCode == 403 {
 		return content, ErrRateLimited
+	} else if resp.StatusCode == 401 {
+		return content, ErrUnauthorized
 	} else if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
 		return content, fmt.Errorf("%d %s: %s", resp.StatusCode, http.StatusText(resp.StatusCode), string(body))
@@ -131,7 +155,7 @@ func (c *Client) FetchDefaultBranch(owner, repo string) (string, error) {
 
 	c.setHeaders(req)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doWithAuthFallback(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch repo info: %v", err)
 	}
@@ -141,6 +165,8 @@ func (c *Client) FetchDefaultBranch(owner, repo string) (string, error) {
 		return "", fmt.Errorf("repository not found: %s/%s", owner, repo)
 	} else if resp.StatusCode == 403 {
 		return "", ErrRateLimited
+	} else if resp.StatusCode == 401 {
+		return "", fmt.Errorf("%w - invalid or expired token (use `dgf config set token \"\"` to clear saved token)", ErrUnauthorized)
 	} else if resp.StatusCode != 200 {
 		return "", fmt.Errorf("failed to fetch repo info: status %d", resp.StatusCode)
 	}
@@ -170,11 +196,15 @@ func (c *Client) FetchRawFile(downloadURL string) ([]byte, error) {
 		req.Header.Add("Authorization", "token "+c.token)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doWithAuthFallback(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch file: %v", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == 401 {
+		return nil, fmt.Errorf("%w - invalid or expired token", ErrUnauthorized)
+	}
 
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("failed to download: status %d", resp.StatusCode)
