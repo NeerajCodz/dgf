@@ -55,10 +55,10 @@ func NewModel(initialURL, token string) Model {
 	searchInput.CharLimit = 64
 	searchInput.Width = 40
 
-	// Create spinner
+	// Create enhanced spinner with smooth animation
 	sp := spinner.New()
-	sp.Spinner = spinner.Dot
-	sp.Style = lipgloss.NewStyle().Foreground(ColorHighlight)
+	sp.Spinner = spinner.MiniDot
+	sp.Style = lipgloss.NewStyle().Foreground(ColorAccent).Bold(true)
 
 	// Create state
 	state := NewAppState()
