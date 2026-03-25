@@ -2,8 +2,12 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
+	"github.com/alecthomas/chroma/v2/formatters"
+	"github.com/alecthomas/chroma/v2/lexers"
+	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/NeerajCodz/dgf/internal/utils"
@@ -248,6 +252,48 @@ func (m Model) renderStatusBar(icons IconSet) string {
 	return left + strings.Repeat(" ", spacing) + right
 }
 
+// highlightCode applies syntax highlighting to code content
+func highlightCode(content string, filePath string) string {
+	// Get lexer based on file extension
+	ext := filepath.Ext(filePath)
+	lexer := lexers.Get(strings.TrimPrefix(ext, "."))
+	
+	// Fall back to plain text if language not recognized
+	if lexer == nil {
+		// Try to guess from filename
+		lexer = lexers.Match(filePath)
+		if lexer == nil {
+			lexer = lexers.Fallback
+		}
+	}
+	
+	// Use a terminal-friendly formatter with ANSI colors
+	formatter := formatters.Get("terminal256")
+	if formatter == nil {
+		formatter = formatters.Get("terminal")
+	}
+	
+	// Get a style suitable for dark terminals
+	style := styles.Get("monokai")
+	if style == nil {
+		style = styles.Fallback
+	}
+	
+	// Tokenize and format
+	tokens, err := lexer.Tokenise(nil, content)
+	if err != nil {
+		return content // Fall back to plain text on error
+	}
+	
+	var buf strings.Builder
+	err = formatter.Format(&buf, style, tokens)
+	if err != nil {
+		return content // Fall back to plain text on error
+	}
+	
+	return buf.String()
+}
+
 // viewPreview renders the file preview modal
 func (m Model) viewPreview() string {
 	var b strings.Builder
@@ -259,8 +305,11 @@ func (m Model) viewPreview() string {
 	b.WriteString(strings.Repeat("─", m.width-4))
 	b.WriteString("\n")
 
+	// Apply syntax highlighting
+	highlightedContent := highlightCode(m.state.PreviewContent, m.state.PreviewPath)
+	
 	// Content
-	lines := strings.Split(m.state.PreviewContent, "\n")
+	lines := strings.Split(highlightedContent, "\n")
 	maxLines := m.height - 8
 	if maxLines < 5 {
 		maxLines = 5
