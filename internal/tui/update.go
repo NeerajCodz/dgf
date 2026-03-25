@@ -231,9 +231,13 @@ func (m *Model) startDownload() tea.Cmd {
 		}
 
 		err := github.Download(structure, github.DownloadOptions{
-			OutputDir: downloadPath,
-			Token:     token,
-			Workers:   workers,
+			OutputDir:    downloadPath,
+			Token:        token,
+			Workers:      workers,
+			CheckLFS:     true,
+			Owner:        owner,
+			Repo:         repo,
+			GitHubClient: client,
 		})
 
 		return downloadDoneMsg{count: len(structure.Files), err: err}

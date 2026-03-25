@@ -16,13 +16,17 @@ import (
 
 // DownloadOptions configures download behavior
 type DownloadOptions struct {
-	OutputDir   string
-	Token       string
-	Workers     int
-	Silent      bool
-	OnProgress  func(current, total int)
-	OnFileStart func(path string)
-	OnFileDone  func(path string, err error)
+	OutputDir    string
+	Token        string
+	Workers      int
+	Silent       bool
+	CheckLFS     bool
+	Owner        string
+	Repo         string
+	GitHubClient *Client
+	OnProgress   func(current, total int)
+	OnFileStart  func(path string)
+	OnFileDone   func(path string, err error)
 }
 
 // Download downloads files from a repository structure
@@ -84,7 +88,15 @@ func Download(structure types.RepositoryStructure, opts DownloadOptions) error {
 
 				var err error
 				if downloadURL != "" {
-					err = downloadFile(client, downloadURL, filePath, opts.Token)
+					err = downloadFileWithOptions(client, DownloadFileOptions{
+						URL:          downloadURL,
+						DestPath:     filePath,
+						Token:        opts.Token,
+						Owner:        opts.Owner,
+						Repo:         opts.Repo,
+						CheckLFS:     opts.CheckLFS,
+						GitHubClient: opts.GitHubClient,
+					})
 				} else {
 					err = fmt.Errorf("no download URL")
 				}
@@ -166,19 +178,38 @@ func DownloadWithProgress(structure types.RepositoryStructure, token, outputDir 
 }
 
 // downloadFile downloads a single file
+// DownloadFileOptions configures individual file download
+type DownloadFileOptions struct {
+	URL           string
+	DestPath      string
+	Token         string
+	Owner         string
+	Repo          string
+	CheckLFS      bool
+	GitHubClient  *Client
+}
+
 func downloadFile(client *http.Client, url, destPath, token string) error {
+	return downloadFileWithOptions(client, DownloadFileOptions{
+		URL:      url,
+		DestPath: destPath,
+		Token:    token,
+	})
+}
+
+func downloadFileWithOptions(client *http.Client, opts DownloadFileOptions) error {
 	// Ensure parent directory exists
-	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(opts.DestPath), 0755); err != nil {
 		return fmt.Errorf("failed to create directory: %v", err)
 	}
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", opts.URL, nil)
 	if err != nil {
 		return err
 	}
 
-	if token != "" {
-		req.Header.Add("Authorization", "token "+token)
+	if opts.Token != "" {
+		req.Header.Add("Authorization", "token "+opts.Token)
 	}
 	req.Header.Add("Accept", "application/vnd.github+json")
 
@@ -192,12 +223,38 @@ func downloadFile(client *http.Client, url, destPath, token string) error {
 		return fmt.Errorf("status %d", resp.StatusCode)
 	}
 
-	file, err := os.Create(destPath)
+	// Read content to check for LFS
+	content, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	// Check if this is an LFS pointer file
+	if opts.CheckLFS && opts.GitHubClient != nil && IsLFSPointer(content) {
+		pointer, err := ParseLFSPointer(content)
+		if err != nil {
+			// Not a valid LFS pointer, save as-is
+			return writeFile(opts.DestPath, content)
+		}
+
+		// Fetch actual content from LFS
+		lfsContent, err := opts.GitHubClient.FetchLFSFile(opts.Owner, opts.Repo, pointer)
+		if err != nil {
+			// LFS fetch failed, save pointer file
+			return writeFile(opts.DestPath, content)
+		}
+		return writeFile(opts.DestPath, lfsContent)
+	}
+
+	return writeFile(opts.DestPath, content)
+}
+
+func writeFile(path string, content []byte) error {
+	file, err := os.Create(path)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
-
-	_, err = io.Copy(file, resp.Body)
+	_, err = file.Write(content)
 	return err
 }
