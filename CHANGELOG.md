@@ -1,5 +1,63 @@
-#
-# [1.0.1] - 2025-08-15
+# Changelog
+
+All notable changes to the DGF (Direct Git Fetch) project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+---
+
+## [2.0.0] - 2025-XX-XX
+
+### Added
+
+#### Interactive TUI
+- **File Browser**: Visual terminal UI with keyboard navigation for browsing repository contents
+- **Real-time Search**: Press `/` to filter files instantly as you type
+- **Multi-select**: Use `Space` to toggle selection, `a` for select all, `u` for unselect all
+- **File Preview**: Preview text files before downloading with `p` key
+- **Icon Toggle**: Switch between emoji and ASCII icons with `i` key
+- **Breadcrumb Navigation**: Visual path indicator with back button support
+
+#### Config Management
+- New `dgf config` subcommand for persistent configuration
+- `dgf config show` - Display all settings
+- `dgf config get <key>` - Get specific value
+- `dgf config set <key> <value>` - Set configuration
+- `dgf config path` - Show config file location
+- Configurable options: `token`, `download_path`, `ascii_mode`, `workers`
+
+#### Agent/JSON Mode
+- New `dgf agent tree <url>` - Get repository tree as JSON
+- New `dgf agent download <url> <paths...>` - Download files programmatically
+- Machine-readable JSON output for scripting
+
+#### Git LFS Support
+- Automatic detection of Git LFS pointer files
+- Seamless download of LFS-tracked files
+- Falls back to pointer file if LFS download fails
+
+#### Download Improvements
+- Parallel download with configurable worker pool
+- Recursive folder selection and download
+- Progress tracking for batch downloads
+- Better error handling and retry logic
+
+### Changed
+- Complete codebase restructure for modularity
+- Migrated from flat structure to `cmd/`, `internal/`, `pkg/` layout
+- Improved argument parsing with better error messages
+- Enhanced help text with more examples
+
+### Technical
+- Added bubbletea for TUI framework
+- Added lipgloss for terminal styling
+- Added bubbles for UI components
+- New internal packages: `tui`, `config`, `selection`, `agent`
+- Refactored GitHub client with cleaner API
+
+---
+
+## [1.0.1] - 2025-08-15
 
 ### Added
 
@@ -23,13 +81,6 @@
 ### Fixed
 
 - Patch fixes for installer reliability and platform compatibility.
-
----
-# Changelog
-
-All notable changes to the DGF (Direct Git Fetch) project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
@@ -72,26 +123,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **Features**:
     - Download files via direct repository URLs or detailed parameters.
     - Check repository paths, print directory trees, and output repository info as JSON.
-
-### Fixed
-
-- N/A (initial release).
-
-### Changed
-
-- N/A (initial release).
-
-### Deprecated
-
-- N/A (initial release).
-
-### Removed
-
-- N/A (initial release).
-
-### Security
-
-- N/A (initial release).
 
 ---
 
