@@ -96,22 +96,38 @@ func (m Model) viewBrowser() string {
 	var b strings.Builder
 
 	// Header with centered logo and breadcrumb
-	headerLogoStyle := lipgloss.NewStyle().
-		Foreground(ColorHighlight).
+	logoStyle := lipgloss.NewStyle().
+		Foreground(ColorLogo).
 		Bold(true)
-	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, headerLogoStyle.Render("Direct Git Fetch • DGF v2.0")))
+	
+	logoText := "╔═══════════════════════════════════════╗\n"
+	logoText += "║   Direct Git Fetch • DGF v2.0        ║\n"
+	logoText += "╚═══════════════════════════════════════╝"
+	
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, logoStyle.Render(logoText)))
 	b.WriteString("\n")
 
-	// Header with breadcrumb
+	// Breadcrumb bar
 	breadcrumb := m.state.GetBreadcrumb()
 	if breadcrumb != "" {
-		headerStyle := lipgloss.NewStyle().
+		breadcrumbStyle := lipgloss.NewStyle().
 			Background(ColorBorder).
-			Foreground(ColorForeground).
-			Padding(0, 1).
+			Foreground(ColorBreadcrumb).
+			Bold(true).
+			Padding(0, 2).
 			Width(m.width)
 
-		b.WriteString(headerStyle.Render("📁 " + breadcrumb))
+		b.WriteString(breadcrumbStyle.Render("📂 " + breadcrumb))
+		b.WriteString("\n")
+	} else {
+		// Show helpful message when no repo loaded
+		breadcrumbStyle := lipgloss.NewStyle().
+			Background(ColorBorder).
+			Foreground(ColorSubtle).
+			Italic(true).
+			Padding(0, 2).
+			Width(m.width)
+		b.WriteString(breadcrumbStyle.Render("⚡ Ready to browse GitHub repositories"))
 		b.WriteString("\n")
 	}
 
@@ -135,12 +151,22 @@ func (m Model) viewBrowser() string {
 		m.state.ScrollOffset = m.state.Cursor - listHeight + 1
 	}
 
-	// Render table header
-	tableHeader := lipgloss.NewStyle().
-		Foreground(ColorSubtle).
+	// Render table header with styling
+	headerStyle := lipgloss.NewStyle().
+		Background(ColorBorder).
+		Foreground(ColorForeground).
 		Bold(true).
-		Render(fmt.Sprintf("%-4s %-2s %-40s %-10s", "Sel", "T", "Name", "Size"))
-	b.WriteString(tableHeader)
+		Width(m.width)
+	
+	tableHeader := fmt.Sprintf("  %-4s %-2s %-40s %-10s", "SEL", "T", "NAME", "SIZE")
+	b.WriteString(headerStyle.Render(tableHeader))
+	b.WriteString("\n")
+	
+	// Add separator line
+	separator := lipgloss.NewStyle().
+		Foreground(ColorBorder).
+		Render(strings.Repeat("─", m.width))
+	b.WriteString(separator)
 	b.WriteString("\n")
 
 	// Render items
@@ -182,48 +208,74 @@ func (m Model) viewBrowser() string {
 	return BaseStyle.Render(b.String())
 }
 
-// renderItem renders a single file/folder item
+// renderItem renders a single file/folder item with enhanced styling
 func (m Model) renderItem(item types.RepoItem, isCursor bool, icons IconSet) string {
+	// Selection marker with color
 	selectionMarker := "[ ]"
+	selectionStyle := lipgloss.NewStyle().Foreground(ColorSubtle)
 	if item.Selected {
-		selectionMarker = "[.]"
+		selectionMarker = "[●]"
+		selectionStyle = lipgloss.NewStyle().Foreground(ColorSelected).Bold(true)
 	}
 
-	// Icon
+	// Icon and name with appropriate styling
 	var icon, name string
+	nameStyle := FileStyle
 	if item.IsDir() {
 		icon = icons.Folder
-		name = m.highlightMatches(item.Name+"/", FolderStyle, isCursor)
+		nameStyle = FolderStyle
+		name = item.Name + "/"
 	} else {
 		icon = icons.File
 		if item.IsLFS {
 			icon = icons.LFS
+			nameStyle = lipgloss.NewStyle().Foreground(ColorLFS).Bold(true)
 		}
-		name = m.highlightMatches(item.Name, FileStyle, isCursor)
+		name = item.Name
 	}
 
-	// Size (for files)
+	// Apply highlighting if searching
+	if m.state.SearchQuery != "" {
+		name = m.highlightMatches(name, nameStyle, isCursor)
+	} else {
+		name = nameStyle.Render(name)
+	}
+
+	// Size display
 	var sizeStr string
+	sizeStyle := lipgloss.NewStyle().Foreground(ColorSubtle)
 	if item.IsFile() {
 		sizeStr = utils.FormatBytes(item.Size)
+		if item.Size > 1024*1024 { // > 1MB
+			sizeStyle = lipgloss.NewStyle().Foreground(ColorWarning)
+		}
 	} else {
-		sizeStr = "-"
+		sizeStr = "—"
 	}
 
-	// Build line
+	// Type indicator
 	itemType := "F"
+	typeStyle := lipgloss.NewStyle().Foreground(ColorInfo)
 	if item.IsDir() {
 		itemType = "D"
+		typeStyle = lipgloss.NewStyle().Foreground(ColorFolder).Bold(true)
 	}
+
+	// Build line with proper spacing
 	displayName := stripANSI(fmt.Sprintf("%s %s", icon, name))
 	if len(displayName) > 40 {
 		displayName = displayName[:37] + "..."
 	}
-	lineContent := fmt.Sprintf("%-4s %-2s %-40s %-10s", selectionMarker, itemType, displayName, sizeStr)
+	
+	lineContent := fmt.Sprintf("%s %s %-40s %s",
+		selectionStyle.Render(selectionMarker),
+		typeStyle.Render(itemType),
+		displayName,
+		sizeStyle.Render(fmt.Sprintf("%10s", sizeStr)))
 
-	// Apply cursor style
+	// Apply cursor highlighting
 	if isCursor {
-		return CursorStyle.Width(m.width - 2).Render(lineContent)
+		return CursorStyle.Width(m.width).Render(" "+lineContent+" ")
 	}
 
 	return "  " + lineContent
@@ -283,55 +335,78 @@ func (m Model) highlightMatches(text string, baseStyle lipgloss.Style, isCursor 
 	return result.String()
 }
 
-// renderStatusBar renders the bottom status bar
+// renderStatusBar renders the enhanced bottom status bar
 func (m Model) renderStatusBar(_ IconSet) string {
-	var parts []string
+	// Build status bar sections
+	var left, center, right []string
 
-	// Selection info
+	// Left: Selection info
 	if m.selection.HasSelection() {
 		count := m.selection.Count()
 		size := utils.FormatBytes(m.selection.TotalSize())
-		parts = append(parts, SelectedStyle.Render(fmt.Sprintf("%d selected (%s)", count, size)))
+		left = append(left, StatusValueStyle.Render(fmt.Sprintf("%d", count))+" selected "+StatusValueStyle.Render(size))
 	} else {
-		parts = append(parts, StatusBarStyle.Render("0 selected"))
+		left = append(left, StatusBarStyle.Foreground(ColorSubtle).Render("No selection"))
 	}
 
-	// Position info
+	// Center: Position and context
 	items := m.state.GetVisibleItems()
 	if len(items) > 0 {
-		parts = append(parts, StatusBarStyle.Render(fmt.Sprintf("%d/%d", m.state.Cursor+1, len(items))))
+		center = append(center, StatusKeyStyle.Render(fmt.Sprintf("%d/%d", m.state.Cursor+1, len(items))))
+		if m.state.Path != "" {
+			center = append(center, StatusBarStyle.Foreground(ColorSubtle).Render(fmt.Sprintf("• %d items", len(items))))
+		} else {
+			center = append(center, StatusBarStyle.Foreground(ColorSubtle).Render(fmt.Sprintf("• %d items • root", len(items))))
+		}
+	}
+	
+	// Add download directory hint
+	if m.state.DownloadPath != "" && m.state.DownloadPath != "." {
+		center = append(center, StatusBarStyle.Foreground(ColorSubtle).Render("• "+m.state.DownloadPath))
 	}
 
-	// Key hints
+	// Right: Key hints (compact)
 	hints := []string{
-		StatusKeyStyle.Render("K/Space") + ":select",
-		StatusKeyStyle.Render("L/→") + ":open",
-		StatusKeyStyle.Render("J/←") + ":back",
-		StatusKeyStyle.Render("Enter") + ":download",
-		StatusKeyStyle.Render("I") + ":invert",
-		StatusKeyStyle.Render("/") + ":search",
-		StatusKeyStyle.Render("O") + ":icons",
+		StatusKeyStyle.Render("K") + ":sel",
+		StatusKeyStyle.Render("L") + ":open",
+		StatusKeyStyle.Render("J") + ":back",
+		StatusKeyStyle.Render("⏎") + ":dl",
+		StatusKeyStyle.Render("I") + ":inv",
 		StatusKeyStyle.Render("?") + ":help",
 	}
+	right = append(right, strings.Join(hints, " "))
 
-	hintsStr := StatusBarStyle.Render(strings.Join(hints, " │ "))
-
-	// Combine
-	left := strings.Join(parts, " │ ")
-	right := hintsStr
+	// Build full status bar
+	leftStr := strings.Join(left, " │ ")
+	centerStr := strings.Join(center, " ")
+	rightStr := strings.Join(right, " ")
 
 	// Calculate spacing
-	spacing := m.width - lipgloss.Width(left) - lipgloss.Width(right) - 4
-	if spacing < 0 {
-		spacing = 1
+	leftWidth := lipgloss.Width(leftStr)
+	centerWidth := lipgloss.Width(centerStr)
+	rightWidth := lipgloss.Width(rightStr)
+	
+	totalContentWidth := leftWidth + centerWidth + rightWidth
+	if totalContentWidth >= m.width-4 {
+		// Too wide, simplify
+		return StatusBarStyle.Width(m.width).Render(leftStr + " " + rightStr)
+	}
+	
+	// Calculate center position
+	centerStart := (m.width - centerWidth) / 2
+	leftSpace := centerStart - leftWidth
+	rightSpace := m.width - centerStart - centerWidth - rightWidth
+	
+	if leftSpace < 2 {
+		leftSpace = 2
+	}
+	if rightSpace < 2 {
+		rightSpace = 2
 	}
 
-	line := left + strings.Repeat(" ", spacing) + right
-	runes := []rune(line)
-	if len(runes) > m.width {
-		return string(runes[:max(0, m.width)])
-	}
-	return line
+	statusLine := leftStr + strings.Repeat(" ", leftSpace) + centerStr + strings.Repeat(" ", rightSpace) + rightStr
+	
+	return StatusBarStyle.Width(m.width).Render(statusLine)
 }
 
 func stripANSI(s string) string {

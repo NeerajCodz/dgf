@@ -4,7 +4,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Theme colors for the TUI
+// Theme colors for the TUI - Tokyo Night inspired
 var (
 	// Base colors
 	ColorBackground = lipgloss.Color("#1a1b26")
@@ -12,6 +12,7 @@ var (
 	ColorSubtle     = lipgloss.Color("#565f89")
 	ColorHighlight  = lipgloss.Color("#7aa2f7")
 	ColorBorder     = lipgloss.Color("#3b4261")
+	ColorAccent     = lipgloss.Color("#bb9af7")
 
 	// Semantic colors
 	ColorSuccess = lipgloss.Color("#9ece6a")
@@ -23,8 +24,13 @@ var (
 	ColorFolder     = lipgloss.Color("#7aa2f7")
 	ColorFile       = lipgloss.Color("#c0caf5")
 	ColorSelected   = lipgloss.Color("#9ece6a")
-	ColorCursor     = lipgloss.Color("#bb9af7")
-	ColorLFS        = lipgloss.Color("#e0af68")
+	ColorCursor     = lipgloss.Color("#292e42")
+	ColorCursorText = lipgloss.Color("#bb9af7")
+	ColorLFS        = lipgloss.Color("#ff9e64")
+	
+	// Header colors
+	ColorLogo       = lipgloss.Color("#bb9af7")
+	ColorBreadcrumb = lipgloss.Color("#7dcfff")
 )
 
 // Styles
@@ -66,16 +72,21 @@ var (
 
 	CursorStyle = lipgloss.NewStyle().
 			Background(ColorCursor).
-			Foreground(ColorBackground).
+			Foreground(ColorCursorText).
 			Bold(true)
 
 	// Status bar styles
 	StatusBarStyle = lipgloss.NewStyle().
-			Foreground(ColorSubtle).
+			Background(ColorBorder).
+			Foreground(ColorForeground).
 			Padding(0, 1)
 
 	StatusKeyStyle = lipgloss.NewStyle().
-			Foreground(ColorHighlight).
+			Foreground(ColorAccent).
+			Bold(true)
+			
+	StatusValueStyle = lipgloss.NewStyle().
+			Foreground(ColorSuccess).
 			Bold(true)
 
 	// Toast styles
