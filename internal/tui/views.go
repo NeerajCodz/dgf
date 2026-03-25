@@ -111,22 +111,48 @@ func (m Model) viewInput() string {
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, b.String())
 }
 
-// viewLoading renders the loading screen
+// viewLoading renders the enhanced loading screen
 func (m Model) viewLoading() string {
-	loadingStyle := lipgloss.NewStyle().
-		Foreground(ColorHighlight).
+	var b strings.Builder
+
+	// Animated loading box
+	boxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(ColorAccent).
+		Padding(2, 4).
+		Align(lipgloss.Center)
+
+	spinnerStyle := lipgloss.NewStyle().
+		Foreground(ColorAccent).
 		Bold(true)
+	
+	messageStyle := lipgloss.NewStyle().
+		Foreground(ColorForeground)
 
 	spinnerStr := m.spinner.View()
-	message := "Fetching repository..."
-
+	
+	var message string
 	if m.state.Owner != "" && m.state.Repo != "" {
 		message = fmt.Sprintf("Fetching %s/%s...", m.state.Owner, m.state.Repo)
+		if m.state.Path != "" {
+			message += fmt.Sprintf("\n📂 %s", m.state.Path)
+		}
+	} else {
+		message = "Connecting to GitHub..."
 	}
 
-	content := fmt.Sprintf("%s %s", spinnerStr, loadingStyle.Render(message))
+	content := spinnerStyle.Render(spinnerStr) + " " + messageStyle.Render(message)
+	
+	b.WriteString(boxStyle.Render(content))
+	b.WriteString("\n\n")
+	
+	// Helpful tip while loading
+	tipStyle := lipgloss.NewStyle().
+		Foreground(ColorSubtle).
+		Italic(true)
+	b.WriteString(tipStyle.Render("💡 Tip: You can select multiple files before downloading"))
 
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, content)
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, b.String())
 }
 
 // viewBrowser renders the file browser
@@ -224,18 +250,25 @@ func (m Model) viewBrowser() string {
 		}
 	}
 
-	// Search overlay
+	// Search overlay with enhanced styling
 	if m.state.Mode == types.ModeSearch {
-		searchBox := SearchStyle.
-			Width(40).
-			Render("/ " + m.searchInput.View())
+		searchBoxStyle := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(ColorInfo).
+			Background(ColorBackground).
+			Foreground(ColorForeground).
+			Padding(0, 1).
+			Width(50)
 
+		searchContent := "🔍 " + m.searchInput.View()
+		
 		searchInfo := lipgloss.NewStyle().
-			Foreground(ColorSubtle).
+			Foreground(ColorSuccess).
+			Bold(true).
 			Render(fmt.Sprintf(" (%d results)", len(m.state.FilteredItems)))
 
 		b.WriteString("\n")
-		b.WriteString(searchBox + searchInfo)
+		b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, searchBoxStyle.Render(searchContent)+searchInfo))
 		b.WriteString("\n")
 	}
 
@@ -721,15 +754,27 @@ func (m Model) viewHelp() string {
 		Render(b.String())
 }
 
-// viewDownload renders the download progress screen
+// viewDownload renders the enhanced download progress screen
 func (m Model) viewDownload() string {
 	var b strings.Builder
 
-	title := TitleStyle.Render("Downloading Files...")
-	b.WriteString(title)
+	// Progress box with border
+	boxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(ColorSuccess).
+		Padding(2, 4).
+		Width(70).
+		Align(lipgloss.Center)
+
+	// Title
+	titleStyle := lipgloss.NewStyle().
+		Foreground(ColorSuccess).
+		Bold(true)
+	
+	b.WriteString(titleStyle.Render("⬇️  Downloading Files"))
 	b.WriteString("\n\n")
 
-	// Progress bar with percentage
+	// Progress bar with enhanced visuals
 	barWidth := 50
 	filled := int(m.state.DownloadProgress * float64(barWidth))
 	if filled > barWidth {
@@ -739,37 +784,53 @@ func (m Model) viewDownload() string {
 		filled = 0
 	}
 
-	bar := "[" + strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled) + "]"
+	barStyle := lipgloss.NewStyle().Foreground(ColorSuccess)
+	emptyStyle := lipgloss.NewStyle().Foreground(ColorBorder)
+	
+	bar := barStyle.Render(strings.Repeat("█", filled)) + emptyStyle.Render(strings.Repeat("░", barWidth-filled))
 	percentage := int(m.state.DownloadProgress * 100)
-	progressLine := fmt.Sprintf("%s %3d%%", bar, percentage)
-	b.WriteString(ProgressBarStyle.Render(progressLine))
+	progressLine := fmt.Sprintf("[%s] %3d%%", bar, percentage)
+	b.WriteString(progressLine)
 	b.WriteString("\n\n")
 
-	// Progress info: completed / total files
-	info := fmt.Sprintf("Files: %d / %d", m.state.DownloadDone, m.state.DownloadTotal)
-	b.WriteString(ProgressTextStyle.Render(info))
+	// Progress stats
+	statsStyle := lipgloss.NewStyle().
+		Foreground(ColorInfo).
+		Bold(true)
+	
+	info := fmt.Sprintf("Files: %s/%d", statsStyle.Render(fmt.Sprintf("%d", m.state.DownloadDone)), m.state.DownloadTotal)
+	b.WriteString(info)
 	b.WriteString("\n\n")
 
-	// Current file being downloaded
+	// Current file
 	if m.state.DownloadCurrent != "" {
-		currentLabel := "Current File:"
-		b.WriteString(StatusBarStyle.Render(currentLabel))
-		b.WriteString("\n")
+		labelStyle := lipgloss.NewStyle().
+			Foreground(ColorSubtle)
 		
-		current := "  " + m.state.DownloadCurrent
-		// Truncate with ellipsis if too long
-		maxLen := m.width - 6
+		fileStyle := lipgloss.NewStyle().
+			Foreground(ColorAccent).
+			Italic(true)
+		
+		b.WriteString(labelStyle.Render("Current: "))
+		
+		current := m.state.DownloadCurrent
+		maxLen := 60
 		if len(current) > maxLen {
-			current = current[:maxLen-3] + "..."
+			current = "..." + current[len(current)-maxLen+3:]
 		}
-		b.WriteString(StatusBarStyle.Render(current))
+		b.WriteString(fileStyle.Render(current))
 		b.WriteString("\n")
 	} else {
-		b.WriteString(StatusBarStyle.Render("Initializing download..."))
+		statusStyle := lipgloss.NewStyle().
+			Foreground(ColorSubtle).
+			Italic(true)
+		b.WriteString(statusStyle.Render("Preparing download..."))
 		b.WriteString("\n")
 	}
 
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, b.String())
+	content := boxStyle.Render(b.String())
+	
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, content)
 }
 
 // overlayToast adds a toast notification overlay
