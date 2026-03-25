@@ -11,12 +11,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Added
 
 #### Interactive TUI
+- **Beautiful Terminal UI**: Tokyo Night color theme with enhanced visual design
 - **File Browser**: Visual terminal UI with keyboard navigation for browsing repository contents
-- **Real-time Search**: Press `/` to filter files instantly as you type
-- **Multi-select**: Use `Space` to toggle selection, `a` for select all, `u` for unselect all
-- **File Preview**: Preview text files before downloading with `p` key
-- **Icon Toggle**: Switch between emoji and ASCII icons with `i` key
-- **Breadcrumb Navigation**: Visual path indicator with back button support
+- **Real-time Search**: Press `/` to filter files instantly with enhanced styling and result count
+- **Multi-select**: Intuitive controls with `k/space` to toggle, `i` to inverse (with confirmation)
+- **File Preview**: Preview text files with syntax highlighting, line numbers, and enhanced footer
+- **Icon Toggle**: Switch between emoji and ASCII icons with `o/O` key
+- **Breadcrumb Navigation**: Enhanced breadcrumb bar with folder icon and color-coded styling
+- **Comprehensive Help**: Organized help screen with emoji sections, keybindings, and tips
+- **Smart Navigation**: Vim-inspired keybindings with arrow key alternatives
+  - `j/J/←` to navigate back to parent folder
+  - `l/L/→` to enter folder/download
+  - `k/K/space` to toggle selection
+  - `i/I` to inverse selection with double-tap confirmation
+  - `Enter` to download selected items
+
+#### Visual Enhancements
+- **Tokyo Night Theme**: Beautiful color scheme with semantic colors for different elements
+- **Centered Logo**: ASCII art DGF logo with boxed borders in main browser
+- **Enhanced Status Bar**: Three-section layout (selection info | context | key hints)
+- **Table Layout**: Stable column layout with headers (SEL | T | NAME | SIZE)
+- **Selection Markers**: Color-coded [●] for selected, [ ] for unselected
+- **File Indicators**: Type indicators with bold styling for directories
+- **Size Warnings**: Orange for files > 10MB, red for files > 50MB
+- **LFS Styling**: Special styling for Git LFS files with underline and distinct color
+- **Loading Screens**: Enhanced loading with animated spinners and helpful tips
+- **Progress Bars**: Visual download progress with Unicode box-drawing characters
 
 #### Config Management
 - New `dgf config` subcommand for persistent configuration
@@ -29,24 +49,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 #### Agent/JSON Mode
 - New `dgf agent tree <url>` - Get repository tree as JSON
 - New `dgf agent download <url> <paths...>` - Download files programmatically
-- Machine-readable JSON output for scripting
+- Machine-readable JSON output for scripting and automation
 
 #### Git LFS Support
 - Automatic detection of Git LFS pointer files
-- Seamless download of LFS-tracked files
+- Seamless download of LFS-tracked files with visual indicators
 - Falls back to pointer file if LFS download fails
 
 #### Download Improvements
 - Parallel download with configurable worker pool
 - Recursive folder selection and download
-- Progress tracking for batch downloads
+- Enhanced progress tracking with file count and current file display
 - Better error handling and retry logic
+- Single Enter confirmation for downloads (no double-confirmation)
 
 ### Changed
-- Complete codebase restructure for modularity
+- Complete codebase restructure for modularity and maintainability
 - Migrated from flat structure to `cmd/`, `internal/`, `pkg/` layout
 - Improved argument parsing with better error messages
-- Enhanced help text with more examples
+- Enhanced help text with more examples and updated keybindings
+- Redesigned all TUI views (input, loading, browser, preview, help, download)
+- Improved GitHub client with fallback to unauthenticated access on 401 errors
+- Better ANSI handling for styled text in fixed-width columns
+- Refined borders and spacing throughout the UI
+- Enhanced search overlay with rounded borders and result highlighting
+
+### Fixed
+- GitHub authentication fallback on invalid tokens (401 errors)
+- Status bar overflow with proper width truncation using rune slicing
+- Selection state synchronization with item list
+- Confirmation state resets on navigation to prevent stuck states
+- ANSI escape code stripping in table columns for proper alignment
 
 ### Technical
 - Added bubbletea for TUI framework
