@@ -105,8 +105,14 @@ func TestFetchContents_NotFound(t *testing.T) {
 		httpClient: server.Client(),
 	}
 
-	req, _ := http.NewRequest("GET", server.URL, nil)
-	resp, _ := client.httpClient.Do(req)
+	req, err := http.NewRequest("GET", server.URL, nil)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+	resp, err := client.httpClient.Do(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusNotFound {
@@ -125,8 +131,14 @@ func TestFetchContents_RateLimited(t *testing.T) {
 		httpClient: server.Client(),
 	}
 
-	req, _ := http.NewRequest("GET", server.URL, nil)
-	resp, _ := client.httpClient.Do(req)
+	req, err := http.NewRequest("GET", server.URL, nil)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+	resp, err := client.httpClient.Do(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusForbidden {
@@ -158,8 +170,14 @@ func TestFetchFile_Success(t *testing.T) {
 		httpClient: server.Client(),
 	}
 
-	req, _ := http.NewRequest("GET", server.URL, nil)
-	resp, _ := client.httpClient.Do(req)
+	req, err := http.NewRequest("GET", server.URL, nil)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+	resp, err := client.httpClient.Do(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
 	defer resp.Body.Close()
 
 	var content types.GitHubContent
