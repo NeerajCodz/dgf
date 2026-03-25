@@ -119,8 +119,11 @@ func (m Model) viewBrowser() string {
 	items := m.state.GetVisibleItems()
 	icons := GetIcons(m.state.ASCIIMode)
 
+	// Keep selection state in sync before rendering
+	m.selection.SyncWithItems(m.state.Items)
+
 	// Calculate visible area
-	listHeight := m.height - 6 // Leave room for header, footer, status
+	listHeight := m.height - 8 // Leave room for logo, breadcrumb, table header, status
 	if listHeight < 5 {
 		listHeight = 5
 	}
@@ -176,7 +179,7 @@ func (m Model) viewBrowser() string {
 	b.WriteString("\n")
 	b.WriteString(m.renderStatusBar(icons))
 
-	return b.String()
+	return BaseStyle.Render(b.String())
 }
 
 // renderItem renders a single file/folder item
@@ -324,8 +327,9 @@ func (m Model) renderStatusBar(_ IconSet) string {
 	}
 
 	line := left + strings.Repeat(" ", spacing) + right
-	if len(line) > m.width {
-		return line[:m.width]
+	runes := []rune(line)
+	if len(runes) > m.width {
+		return string(runes[:max(0, m.width)])
 	}
 	return line
 }
@@ -348,6 +352,13 @@ func stripANSI(s string) string {
 		b.WriteByte(ch)
 	}
 	return b.String()
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // highlightCode applies syntax highlighting to code content
