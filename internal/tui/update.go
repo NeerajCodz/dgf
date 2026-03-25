@@ -245,18 +245,18 @@ func (m *Model) startDownload() tea.Cmd {
 				GitHubClient: client,
 				OnFileStart: func(path string) {
 					progressChan <- downloadProgressMsg{
-						current: "", // File start indicator - path is in 'file' field
+						current: path,
 						total:   m.state.DownloadTotal,
-						file:    path,
-						err:     nil,
+						progress: 0,
+						done:    m.state.DownloadDone,
 					}
 				},
 				OnProgress: func(current, total int) {
 					progressChan <- downloadProgressMsg{
-						current: "", // progress updates don't include file info
+						current: m.state.DownloadCurrent,
 						total:   total,
-						file:    "",
-						err:     nil,
+						progress: float64(current) / float64(total),
+						done:    current,
 					}
 				},
 			})
@@ -265,19 +265,16 @@ func (m *Model) startDownload() tea.Cmd {
 				progressChan <- downloadProgressMsg{
 					current: "",
 					total:   m.state.DownloadTotal,
-					file:    "",
-					err:     err,
+					progress: m.state.DownloadProgress,
+					done:    m.state.DownloadDone,
 				}
 			}
 			close(progressChan)
 		}()
 
 		// Wait for all progress updates
-		for msg := range progressChan {
-			if msg.file != "" && msg.current == "" {
-				// File start event
-				// This will be handled in the Update loop
-			}
+		for range progressChan {
+			// Progress updates will be handled in the Update loop
 		}
 
 		return downloadDoneMsg{count: len(structure.Files), err: nil}
