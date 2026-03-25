@@ -135,8 +135,37 @@ while [ $# -gt 0 ]; do
                 shift
             fi
             ;;
+        -h|--help)
+            echo "DGF Installer v2.0"
+            echo ""
+            echo "Usage: $0 [OPTIONS]"
+            echo ""
+            echo "OPTIONS:"
+            echo "  -v, --version <version>        Version to install (default: latest, e.g., 2.0.0)"
+            echo "  -os, --os <os>                 Operating system: linux, darwin, windows, android"
+            echo "  -arch, --arch <arch>           Architecture: amd64, arm64, arm"
+            echo "  --download-only                Download only, do not install"
+            echo "  --no-rename                    Keep original filename instead of renaming to 'dgf' or 'dgf.exe'"
+            echo "  --debug                        Enable debug output"
+            echo "  -u, --uninstall [path]         Uninstall dgf from specified path or default locations"
+            echo "  -h, --help                     Show this help message"
+            echo ""
+            echo "EXAMPLES:"
+            echo "  # Install latest version with sudo"
+            echo "  sudo ./dgf-installer.sh"
+            echo ""
+            echo "  # Install specific version"
+            echo "  sudo ./dgf-installer.sh -v 2.0.0"
+            echo ""
+            echo "  # Download only (no installation)"
+            echo "  ./dgf-installer.sh --download-only"
+            echo ""
+            echo "  # Uninstall"
+            echo "  sudo ./dgf-installer.sh --uninstall"
+            exit 0
+            ;;
         *)
-            echo "Usage: $0 [-v <version>] [-os <linux|darwin|windows|android>] [-arch <amd64|arm64|arm>] [--download-only] [--no-rename] [--debug] [-u|--uninstall [path]]"
+            echo "Usage: $0 [-v <version>] [-os <linux|darwin|windows|android>] [-arch <amd64|arm64|arm>] [--download-only] [--no-rename] [--debug] [-u|--uninstall [path]] [-h|--help]"
             exit 1
             ;;
     esac
@@ -308,8 +337,8 @@ else
     [ -z "$RELEASES" ] && warning "Releases data is empty, proceeding with metadata.json only"
 fi
 
-# Determine metadata URL
-METADATA_URL="${BASE_URL}/download/${VERSION}/metadata.json"
+# Determine metadata URL (v2.0 uses versioned metadata file)
+METADATA_URL="${BASE_URL}/download/${VERSION}/metadata-${VERSION}.json"
 debug "Metadata URL: $METADATA_URL"
 
 # Fetch metadata with HTTP status check
@@ -329,14 +358,26 @@ FILESIZE=$(echo "$METADATA" | jq -r --arg os "$OS" --arg arch "$ARCH" \
     '.[] | select(.goos == $os and .goarch == $arch) | .size_bytes' 2>/dev/null || echo "null")
 debug "Extracted filename: $FILENAME, metadata size: $FILESIZE bytes"
 
-# Fetch size and SHA256 from GitHub API
+# Extract SHA256 from metadata (v2.0+)
+METADATA_SHA256=$(echo "$METADATA" | jq -r --arg os "$OS" --arg arch "$ARCH" \
+    '.[] | select(.goos == $os and .goarch == $arch) | .sha256' 2>/dev/null || echo "null")
+
+# Fetch size from GitHub API as backup
 API_SIZE="null"
 API_SHA256="null"
 if [ -n "$RELEASES" ]; then
     API_SIZE=$(echo "$RELEASES" | jq -r --arg fname "$FILENAME" \
         '.[0].assets[] | select(.name == $fname) | .size' 2>/dev/null || echo "null")
+fi
+
+# Prefer metadata SHA256, fallback to API if available
+if [ "$METADATA_SHA256" != "null" ] && [ -n "$METADATA_SHA256" ]; then
+    API_SHA256="$METADATA_SHA256"
+    debug "Using SHA256 from metadata: $API_SHA256"
+elif [ -n "$RELEASES" ]; then
     API_SHA256=$(echo "$RELEASES" | jq -r --arg fname "$FILENAME" \
         '.[0].assets[] | select(.name == $fname) | .digest | ltrimstr("sha256:")' 2>/dev/null || echo "null")
+    debug "Falling back to GitHub API digest: $API_SHA256"
 fi
 debug "GitHub API size: $API_SIZE bytes, SHA256: $API_SHA256"
 
