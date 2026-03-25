@@ -6,15 +6,16 @@
 
 ## What's New in v2.0
 
-- 🖥️ **Interactive TUI** - Visual file browser with keyboard navigation
+- 🖥️ **Interactive TUI** - Beautiful terminal UI with Tokyo Night theme
 - 🔍 **Real-time Search** - Filter files instantly with `/` key
-- 📂 **Visual Selection** - Multi-select with space bar, select all with `a`
-- 👁️ **File Preview** - Preview text files before downloading with `p`
-- ⚡ **Parallel Downloads** - Configurable worker pool for faster downloads
+- 📂 **Visual Selection** - Multi-select with intuitive keyboard controls
+- 👁️ **File Preview** - Preview text files with syntax highlighting and line numbers
+- ⚡ **Parallel Downloads** - Fast concurrent downloads with progress tracking
 - 🔧 **Config Management** - Persistent settings with `dgf config` command
-- 🤖 **Agent/JSON Mode** - Machine-readable output for scripts
+- 🤖 **Agent/JSON Mode** - Machine-readable output for automation
 - 📦 **Git LFS Support** - Automatic detection and download of LFS files
-- 🎨 **Icon Toggle** - Switch between emoji and ASCII icons with `i`
+- 🎨 **Enhanced UX** - Smooth animations, improved navigation, comprehensive help
+- 🎯 **Smart Navigation** - Vim-like keybindings with j/k/l/h alternatives
 
 ## Quick Start
 
@@ -42,19 +43,21 @@ dgf -s github -u user -r repo -p src/
 
 | Key | Action |
 |-----|--------|
-| `↑/↓` or `j/k` | Navigate up/down |
-| `Enter` or `l` | Enter folder |
-| `Backspace` or `h` | Go back |
-| `Space` | Toggle selection |
+| `↑/↓` | Navigate up/down |
+| `j` / `J` / `←` | Navigate back to parent folder |
+| `l` / `L` / `→` | Enter folder |
+| `k` / `K` / `Space` | Toggle selection |
+| `i` / `I` | Inverse selection (requires confirmation) |
+| `Enter` | Download selected items |
 | `a` | Select all |
 | `u` | Unselect all |
-| `/` | Search/filter |
+| `/` | Search/filter files |
 | `p` | Preview file |
-| `d` | Download selected |
-| `i` | Toggle icons |
-| `r` | Refresh |
-| `?` | Help |
-| `q` | Quit |
+| `o` / `O` | Toggle icons (emoji/ASCII) |
+| `r` | Refresh current view |
+| `?` | Show help screen |
+| `Esc` | Cancel/Back |
+| `q` / `Ctrl+C` | Quit |
 
 ### Config Management
 
