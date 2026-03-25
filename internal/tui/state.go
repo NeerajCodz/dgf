@@ -1,0 +1,227 @@
+package tui
+
+import (
+	"github.com/NeerajCodz/dgf/internal/github"
+	"github.com/NeerajCodz/dgf/pkg/types"
+)
+
+// AppState holds all state for the TUI application
+type AppState struct {
+	// Mode
+	Mode     types.AppMode
+	PrevMode types.AppMode
+
+	// Repository info
+	Owner    string
+	Repo     string
+	Branch   string
+	Commit   string
+	Path     string
+	Token    string
+
+	// Navigation
+	NavigationStack []types.NavigationEntry
+	Cursor          int
+	ScrollOffset    int
+
+	// Items
+	Items        []types.RepoItem
+	FilteredItems []types.RepoItem
+	FullTree     []types.RepoItem
+
+	// Selection
+	SelectedPaths map[string]bool
+	SelectedSize  int64
+	SelectedCount int
+
+	// Search
+	IsSearching  bool
+	SearchQuery  string
+
+	// Preview
+	PreviewContent string
+	PreviewPath    string
+	PreviewLoading bool
+	PreviewScroll  int
+
+	// Download
+	DownloadPath     string
+	DownloadProgress float64
+	DownloadCurrent  string
+	DownloadTotal    int
+	DownloadDone     int
+	IsDownloading    bool
+
+	// UI
+	ASCIIMode   bool
+	Toast       *types.Toast
+	FrameCount  uint64
+	Width       int
+	Height      int
+	Error       string
+
+	// Config
+	Config types.Config
+
+	// GitHub client
+	Client *github.Client
+}
+
+// NewAppState creates a new application state with defaults
+func NewAppState() *AppState {
+	return &AppState{
+		Mode:            types.ModeInput,
+		SelectedPaths:   make(map[string]bool),
+		NavigationStack: make([]types.NavigationEntry, 0),
+		Items:           make([]types.RepoItem, 0),
+		FilteredItems:   make([]types.RepoItem, 0),
+		Config:          types.DefaultConfig(),
+	}
+}
+
+// SetMode changes the current mode and stores the previous one
+func (s *AppState) SetMode(mode types.AppMode) {
+	s.PrevMode = s.Mode
+	s.Mode = mode
+}
+
+// GoBack returns to the previous mode
+func (s *AppState) GoBack() {
+	s.Mode = s.PrevMode
+}
+
+// IsSelected checks if a path is selected
+func (s *AppState) IsSelected(path string) bool {
+	return s.SelectedPaths[path]
+}
+
+// ToggleSelected toggles the selection of an item
+func (s *AppState) ToggleSelected(item *types.RepoItem) {
+	if s.SelectedPaths[item.Path] {
+		delete(s.SelectedPaths, item.Path)
+		item.Selected = false
+		s.SelectedCount--
+		s.SelectedSize -= item.Size
+	} else {
+		s.SelectedPaths[item.Path] = true
+		item.Selected = true
+		s.SelectedCount++
+		s.SelectedSize += item.Size
+	}
+}
+
+// SelectAll selects all items in the current view
+func (s *AppState) SelectAll() {
+	items := s.GetVisibleItems()
+	for i := range items {
+		if !items[i].Selected {
+			s.SelectedPaths[items[i].Path] = true
+			items[i].Selected = true
+			s.SelectedCount++
+			s.SelectedSize += items[i].Size
+		}
+	}
+}
+
+// UnselectAll unselects all items
+func (s *AppState) UnselectAll() {
+	for i := range s.Items {
+		s.Items[i].Selected = false
+	}
+	s.SelectedPaths = make(map[string]bool)
+	s.SelectedCount = 0
+	s.SelectedSize = 0
+}
+
+// GetVisibleItems returns items based on search filter
+func (s *AppState) GetVisibleItems() []types.RepoItem {
+	if s.IsSearching && s.SearchQuery != "" {
+		return s.FilteredItems
+	}
+	return s.Items
+}
+
+// CurrentItem returns the item under the cursor
+func (s *AppState) CurrentItem() *types.RepoItem {
+	items := s.GetVisibleItems()
+	if s.Cursor >= 0 && s.Cursor < len(items) {
+		return &items[s.Cursor]
+	}
+	return nil
+}
+
+// CanGoBack returns true if there's navigation history
+func (s *AppState) CanGoBack() bool {
+	return len(s.NavigationStack) > 0
+}
+
+// PushNavigation saves current state to navigation stack
+func (s *AppState) PushNavigation() {
+	entry := types.NavigationEntry{
+		URL:    github.BuildURL(s.Owner, s.Repo, s.GetRef(), s.Path),
+		Path:   s.Path,
+		Cursor: s.Cursor,
+		Scroll: s.ScrollOffset,
+	}
+	s.NavigationStack = append(s.NavigationStack, entry)
+}
+
+// PopNavigation restores previous navigation state
+func (s *AppState) PopNavigation() *types.NavigationEntry {
+	if len(s.NavigationStack) == 0 {
+		return nil
+	}
+	last := s.NavigationStack[len(s.NavigationStack)-1]
+	s.NavigationStack = s.NavigationStack[:len(s.NavigationStack)-1]
+	return &last
+}
+
+// GetRef returns the current reference (commit or branch)
+func (s *AppState) GetRef() string {
+	if s.Commit != "" {
+		return s.Commit
+	}
+	return s.Branch
+}
+
+// ShowToast displays a toast notification
+func (s *AppState) ShowToast(message string, toastType types.ToastType) {
+	s.Toast = &types.Toast{
+		Message: message,
+		Type:    toastType,
+		TTL:     90, // ~3 seconds at 30fps
+	}
+}
+
+// TickToast decrements the toast TTL and clears it when expired
+func (s *AppState) TickToast() {
+	if s.Toast != nil {
+		s.Toast.TTL--
+		if s.Toast.TTL <= 0 {
+			s.Toast = nil
+		}
+	}
+}
+
+// ClearError clears any error message
+func (s *AppState) ClearError() {
+	s.Error = ""
+}
+
+// SetError sets an error message and shows a toast
+func (s *AppState) SetError(err string) {
+	s.Error = err
+	s.ShowToast(err, types.ToastError)
+}
+
+// GetBreadcrumb returns the breadcrumb navigation string
+func (s *AppState) GetBreadcrumb() string {
+	if s.Owner == "" || s.Repo == "" {
+		return ""
+	}
+	breadcrumb := s.Owner + "/" + s.Repo
+	if s.Path != "" {
+		breadcrumb += " : " + s.Path
+	}
+	return breadcrumb
+}

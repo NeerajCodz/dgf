@@ -1,0 +1,454 @@
+package tui
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+
+	"github.com/NeerajCodz/dgf/internal/utils"
+	"github.com/NeerajCodz/dgf/pkg/types"
+)
+
+// ASCII art logo
+const logo = `
+    ____  ____________
+   / __ \/ ____/ ____/
+  / / / / / __/ /_    
+ / /_/ / /_/ / __/    
+/_____/\____/_/       
+                      
+Direct Git Fetch v2.0
+`
+
+// viewInput renders the URL input screen
+func (m Model) viewInput() string {
+	var b strings.Builder
+
+	// Logo
+	logoStyle := lipgloss.NewStyle().
+		Foreground(ColorHighlight).
+		Bold(true).
+		Align(lipgloss.Center)
+
+	b.WriteString(logoStyle.Render(logo))
+	b.WriteString("\n\n")
+
+	// Instructions
+	instructionStyle := lipgloss.NewStyle().
+		Foreground(ColorSubtle).
+		Align(lipgloss.Center)
+
+	b.WriteString(instructionStyle.Render("Enter a GitHub repository URL to browse"))
+	b.WriteString("\n\n")
+
+	// URL input
+	inputBox := InputFocusedStyle.
+		Width(60).
+		Align(lipgloss.Center).
+		Render(m.urlInput.View())
+
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, inputBox))
+	b.WriteString("\n\n")
+
+	// Hints
+	hintStyle := lipgloss.NewStyle().Foreground(ColorSubtle)
+	hints := []string{
+		"Examples:",
+		"  github.com/charmbracelet/bubbletea",
+		"  https://github.com/golang/go/tree/master/src",
+		"",
+		"Press Enter to browse  •  ? for help  •  q to quit",
+	}
+	for _, hint := range hints {
+		b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, hintStyle.Render(hint)))
+		b.WriteString("\n")
+	}
+
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, b.String())
+}
+
+// viewLoading renders the loading screen
+func (m Model) viewLoading() string {
+	loadingStyle := lipgloss.NewStyle().
+		Foreground(ColorHighlight).
+		Bold(true)
+
+	spinnerStr := m.spinner.View()
+	message := "Fetching repository..."
+
+	if m.state.Owner != "" && m.state.Repo != "" {
+		message = fmt.Sprintf("Fetching %s/%s...", m.state.Owner, m.state.Repo)
+	}
+
+	content := fmt.Sprintf("%s %s", spinnerStr, loadingStyle.Render(message))
+
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, content)
+}
+
+// viewBrowser renders the file browser
+func (m Model) viewBrowser() string {
+	var b strings.Builder
+
+	// Header with breadcrumb
+	breadcrumb := m.state.GetBreadcrumb()
+	if breadcrumb != "" {
+		headerStyle := lipgloss.NewStyle().
+			Background(ColorBorder).
+			Foreground(ColorForeground).
+			Padding(0, 1).
+			Width(m.width)
+
+		b.WriteString(headerStyle.Render("📁 " + breadcrumb))
+		b.WriteString("\n")
+	}
+
+	// File list
+	items := m.state.GetVisibleItems()
+	icons := GetIcons(m.state.ASCIIMode)
+
+	// Calculate visible area
+	listHeight := m.height - 6 // Leave room for header, footer, status
+	if listHeight < 5 {
+		listHeight = 5
+	}
+
+	// Adjust scroll offset to keep cursor visible
+	if m.state.Cursor < m.state.ScrollOffset {
+		m.state.ScrollOffset = m.state.Cursor
+	} else if m.state.Cursor >= m.state.ScrollOffset+listHeight {
+		m.state.ScrollOffset = m.state.Cursor - listHeight + 1
+	}
+
+	// Render items
+	if len(items) == 0 {
+		emptyStyle := lipgloss.NewStyle().
+			Foreground(ColorSubtle).
+			Italic(true).
+			Padding(2, 0)
+		b.WriteString(emptyStyle.Render("  (empty directory)"))
+		b.WriteString("\n")
+	} else {
+		for i := m.state.ScrollOffset; i < len(items) && i < m.state.ScrollOffset+listHeight; i++ {
+			item := items[i]
+			line := m.renderItem(item, i == m.state.Cursor, icons)
+			b.WriteString(line)
+			b.WriteString("\n")
+		}
+	}
+
+	// Search overlay
+	if m.state.Mode == types.ModeSearch {
+		searchBox := SearchStyle.
+			Width(40).
+			Render("/ " + m.searchInput.View())
+
+		searchInfo := lipgloss.NewStyle().
+			Foreground(ColorSubtle).
+			Render(fmt.Sprintf(" (%d results)", len(m.state.FilteredItems)))
+
+		b.WriteString("\n")
+		b.WriteString(searchBox + searchInfo)
+		b.WriteString("\n")
+	}
+
+	// Footer status bar
+	b.WriteString("\n")
+	b.WriteString(m.renderStatusBar(icons))
+
+	return b.String()
+}
+
+// renderItem renders a single file/folder item
+func (m Model) renderItem(item types.RepoItem, isCursor bool, icons IconSet) string {
+	var b strings.Builder
+
+	// Selection indicator
+	if item.Selected {
+		b.WriteString(SelectedStyle.Render(icons.Selected + " "))
+	} else {
+		b.WriteString(lipgloss.NewStyle().Foreground(ColorSubtle).Render(icons.Unselected + " "))
+	}
+
+	// Icon
+	var icon, name string
+	if item.IsDir() {
+		icon = icons.Folder
+		name = FolderStyle.Render(item.Name + "/")
+	} else {
+		icon = icons.File
+		if item.IsLFS {
+			icon = icons.LFS
+		}
+		name = FileStyle.Render(item.Name)
+	}
+
+	// Size (for files)
+	var sizeStr string
+	if item.IsFile() {
+		sizeStr = SizeStyle.Render(utils.FormatBytes(item.Size))
+	}
+
+	// Build line
+	lineContent := fmt.Sprintf("%s %s", icon, name)
+	if sizeStr != "" {
+		// Right-align size
+		padding := m.width - len(lineContent) - len(sizeStr) - 10
+		if padding > 0 {
+			lineContent += strings.Repeat(" ", padding) + sizeStr
+		}
+	}
+
+	// Apply cursor style
+	if isCursor {
+		return CursorStyle.Width(m.width - 2).Render(lineContent)
+	}
+
+	return "  " + lineContent
+}
+
+// renderStatusBar renders the bottom status bar
+func (m Model) renderStatusBar(icons IconSet) string {
+	var parts []string
+
+	// Selection info
+	if m.selection.HasSelection() {
+		count := m.selection.Count()
+		size := utils.FormatBytes(m.selection.TotalSize())
+		parts = append(parts, SelectedStyle.Render(fmt.Sprintf("%d selected (%s)", count, size)))
+	}
+
+	// Position info
+	items := m.state.GetVisibleItems()
+	if len(items) > 0 {
+		parts = append(parts, StatusBarStyle.Render(fmt.Sprintf("%d/%d", m.state.Cursor+1, len(items))))
+	}
+
+	// Key hints
+	hints := []string{
+		StatusKeyStyle.Render("Space") + ":select",
+		StatusKeyStyle.Render("Enter") + ":open",
+		StatusKeyStyle.Render("d") + ":download",
+		StatusKeyStyle.Render("/") + ":search",
+		StatusKeyStyle.Render("?") + ":help",
+	}
+
+	hintsStr := StatusBarStyle.Render(strings.Join(hints, " │ "))
+
+	// Combine
+	left := strings.Join(parts, " │ ")
+	right := hintsStr
+
+	// Calculate spacing
+	spacing := m.width - lipgloss.Width(left) - lipgloss.Width(right) - 4
+	if spacing < 0 {
+		spacing = 1
+	}
+
+	return left + strings.Repeat(" ", spacing) + right
+}
+
+// viewPreview renders the file preview modal
+func (m Model) viewPreview() string {
+	var b strings.Builder
+
+	// Title
+	title := PreviewTitleStyle.Render("Preview: " + m.state.PreviewPath)
+	b.WriteString(title)
+	b.WriteString("\n")
+	b.WriteString(strings.Repeat("─", m.width-4))
+	b.WriteString("\n")
+
+	// Content
+	lines := strings.Split(m.state.PreviewContent, "\n")
+	maxLines := m.height - 8
+	if maxLines < 5 {
+		maxLines = 5
+	}
+
+	start := m.state.PreviewScroll
+	if start > len(lines)-maxLines {
+		start = len(lines) - maxLines
+	}
+	if start < 0 {
+		start = 0
+	}
+
+	end := start + maxLines
+	if end > len(lines) {
+		end = len(lines)
+	}
+
+	for i := start; i < end; i++ {
+		line := lines[i]
+		if len(line) > m.width-4 {
+			line = line[:m.width-7] + "..."
+		}
+		b.WriteString(PreviewContentStyle.Render(line))
+		b.WriteString("\n")
+	}
+
+	// Footer
+	b.WriteString("\n")
+	b.WriteString(strings.Repeat("─", m.width-4))
+	b.WriteString("\n")
+
+	scrollInfo := fmt.Sprintf("Line %d-%d of %d", start+1, end, len(lines))
+	hints := "↑/↓: scroll │ Esc: close"
+	footer := StatusBarStyle.Render(scrollInfo + "  │  " + hints)
+	b.WriteString(footer)
+
+	// Wrap in modal border
+	return ModalStyle.
+		Width(m.width - 4).
+		Height(m.height - 2).
+		Render(b.String())
+}
+
+// viewHelp renders the help screen
+func (m Model) viewHelp() string {
+	var b strings.Builder
+
+	title := TitleStyle.Render("dgf Help - Keyboard Shortcuts")
+	b.WriteString(title)
+	b.WriteString("\n\n")
+
+	sections := []struct {
+		name  string
+		bindings []struct{ key, desc string }
+	}{
+		{
+			name: "Navigation",
+			bindings: []struct{ key, desc string }{
+				{"↑/k", "Move up"},
+				{"↓/j", "Move down"},
+				{"←/h/Backspace", "Go back"},
+				{"→/l/Enter", "Enter folder"},
+				{"Home/g", "Go to top"},
+				{"End/G", "Go to bottom"},
+			},
+		},
+		{
+			name: "Selection",
+			bindings: []struct{ key, desc string }{
+				{"Space", "Toggle selection"},
+				{"a", "Select all"},
+				{"u", "Unselect all"},
+			},
+		},
+		{
+			name: "Actions",
+			bindings: []struct{ key, desc string }{
+				{"d", "Download selected"},
+				{"p", "Preview file"},
+				{"/", "Search"},
+				{"r", "Refresh"},
+				{"i", "Toggle icons"},
+			},
+		},
+		{
+			name: "General",
+			bindings: []struct{ key, desc string }{
+				{"?", "Toggle help"},
+				{"Esc", "Close/Cancel"},
+				{"q/Ctrl+C", "Quit"},
+			},
+		},
+	}
+
+	for _, section := range sections {
+		b.WriteString(SubtitleStyle.Render(section.name))
+		b.WriteString("\n")
+		for _, binding := range section.bindings {
+			key := HelpKeyStyle.Width(20).Render(binding.key)
+			desc := HelpDescStyle.Render(binding.desc)
+			b.WriteString(fmt.Sprintf("  %s %s\n", key, desc))
+		}
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n")
+	b.WriteString(StatusBarStyle.Render("Press Esc or ? to close"))
+
+	return ModalStyle.
+		Width(m.width - 8).
+		Height(m.height - 4).
+		Render(b.String())
+}
+
+// viewDownload renders the download progress screen
+func (m Model) viewDownload() string {
+	var b strings.Builder
+
+	title := TitleStyle.Render("Downloading...")
+	b.WriteString(title)
+	b.WriteString("\n\n")
+
+	// Progress bar
+	barWidth := 40
+	filled := int(m.state.DownloadProgress * float64(barWidth))
+	if filled > barWidth {
+		filled = barWidth
+	}
+
+	bar := "[" + strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled) + "]"
+	b.WriteString(ProgressBarStyle.Render(bar))
+	b.WriteString("\n\n")
+
+	// Progress info
+	info := fmt.Sprintf("%d / %d files", m.state.DownloadDone, m.state.DownloadTotal)
+	b.WriteString(ProgressTextStyle.Render(info))
+	b.WriteString("\n")
+
+	if m.state.DownloadCurrent != "" {
+		current := "Current: " + m.state.DownloadCurrent
+		if len(current) > m.width-10 {
+			current = current[:m.width-13] + "..."
+		}
+		b.WriteString(StatusBarStyle.Render(current))
+	}
+
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, b.String())
+}
+
+// overlayToast adds a toast notification overlay
+func (m Model) overlayToast(content string) string {
+	if m.state.Toast == nil {
+		return content
+	}
+
+	var style lipgloss.Style
+	switch m.state.Toast.Type {
+	case types.ToastSuccess:
+		style = ToastSuccessStyle
+	case types.ToastError:
+		style = ToastErrorStyle
+	case types.ToastWarning:
+		style = ToastWarningStyle
+	default:
+		style = ToastInfoStyle
+	}
+
+	toast := style.Render(m.state.Toast.Message)
+
+	// Position at top-right
+	toastWidth := lipgloss.Width(toast)
+	x := m.width - toastWidth - 2
+	if x < 0 {
+		x = 0
+	}
+
+	// Overlay the toast on the content
+	lines := strings.Split(content, "\n")
+	if len(lines) > 1 {
+		// Replace part of line 1 with toast
+		line := lines[1]
+		if x < len(line) {
+			lines[1] = line[:x] + toast
+		} else {
+			lines[1] = line + strings.Repeat(" ", x-len(line)) + toast
+		}
+	}
+
+	return strings.Join(lines, "\n")
+}
