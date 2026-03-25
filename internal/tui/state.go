@@ -53,6 +53,7 @@ type AppState struct {
 	IsDownloading      bool
 	ConfirmDownload    bool
 	ConfirmDownloadSize  string
+	ConfirmInverseSelection bool
 
 	// UI
 	ASCIIMode   bool

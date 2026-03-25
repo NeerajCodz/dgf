@@ -35,7 +35,8 @@ func (m Model) viewInput() string {
 		Bold(true).
 		Align(lipgloss.Center)
 
-	b.WriteString(logoStyle.Render(logo))
+	centeredLogo := lipgloss.PlaceHorizontal(m.width, lipgloss.Center, logoStyle.Render(logo))
+	b.WriteString(centeredLogo)
 	b.WriteString("\n\n")
 
 	// Instructions
@@ -94,6 +95,13 @@ func (m Model) viewLoading() string {
 func (m Model) viewBrowser() string {
 	var b strings.Builder
 
+	// Header with centered logo and breadcrumb
+	headerLogoStyle := lipgloss.NewStyle().
+		Foreground(ColorHighlight).
+		Bold(true)
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, headerLogoStyle.Render("Direct Git Fetch • DGF v2.0")))
+	b.WriteString("\n")
+
 	// Header with breadcrumb
 	breadcrumb := m.state.GetBreadcrumb()
 	if breadcrumb != "" {
@@ -123,6 +131,14 @@ func (m Model) viewBrowser() string {
 	} else if m.state.Cursor >= m.state.ScrollOffset+listHeight {
 		m.state.ScrollOffset = m.state.Cursor - listHeight + 1
 	}
+
+	// Render table header
+	tableHeader := lipgloss.NewStyle().
+		Foreground(ColorSubtle).
+		Bold(true).
+		Render(fmt.Sprintf("%-4s %-2s %-40s %-10s", "Sel", "T", "Name", "Size"))
+	b.WriteString(tableHeader)
+	b.WriteString("\n")
 
 	// Render items
 	if len(items) == 0 {
@@ -165,13 +181,9 @@ func (m Model) viewBrowser() string {
 
 // renderItem renders a single file/folder item
 func (m Model) renderItem(item types.RepoItem, isCursor bool, icons IconSet) string {
-	var b strings.Builder
-
-	// Selection indicator
+	selectionMarker := "[ ]"
 	if item.Selected {
-		b.WriteString(SelectedStyle.Render(icons.Selected + " "))
-	} else {
-		b.WriteString(lipgloss.NewStyle().Foreground(ColorSubtle).Render(icons.Unselected + " "))
+		selectionMarker = "[.]"
 	}
 
 	// Icon
@@ -190,18 +202,21 @@ func (m Model) renderItem(item types.RepoItem, isCursor bool, icons IconSet) str
 	// Size (for files)
 	var sizeStr string
 	if item.IsFile() {
-		sizeStr = SizeStyle.Render(utils.FormatBytes(item.Size))
+		sizeStr = utils.FormatBytes(item.Size)
+	} else {
+		sizeStr = "-"
 	}
 
 	// Build line
-	lineContent := fmt.Sprintf("%s %s", icon, name)
-	if sizeStr != "" {
-		// Right-align size
-		padding := m.width - len(lineContent) - len(sizeStr) - 10
-		if padding > 0 {
-			lineContent += strings.Repeat(" ", padding) + sizeStr
-		}
+	itemType := "F"
+	if item.IsDir() {
+		itemType = "D"
 	}
+	displayName := stripANSI(fmt.Sprintf("%s %s", icon, name))
+	if len(displayName) > 40 {
+		displayName = displayName[:37] + "..."
+	}
+	lineContent := fmt.Sprintf("%-4s %-2s %-40s %-10s", selectionMarker, itemType, displayName, sizeStr)
 
 	// Apply cursor style
 	if isCursor {
@@ -266,7 +281,7 @@ func (m Model) highlightMatches(text string, baseStyle lipgloss.Style, isCursor 
 }
 
 // renderStatusBar renders the bottom status bar
-func (m Model) renderStatusBar(icons IconSet) string {
+func (m Model) renderStatusBar(_ IconSet) string {
 	var parts []string
 
 	// Selection info
@@ -274,6 +289,8 @@ func (m Model) renderStatusBar(icons IconSet) string {
 		count := m.selection.Count()
 		size := utils.FormatBytes(m.selection.TotalSize())
 		parts = append(parts, SelectedStyle.Render(fmt.Sprintf("%d selected (%s)", count, size)))
+	} else {
+		parts = append(parts, StatusBarStyle.Render("0 selected"))
 	}
 
 	// Position info
@@ -284,10 +301,13 @@ func (m Model) renderStatusBar(icons IconSet) string {
 
 	// Key hints
 	hints := []string{
-		StatusKeyStyle.Render("Space") + ":select",
-		StatusKeyStyle.Render("Enter") + ":open",
-		StatusKeyStyle.Render("d") + ":download",
+		StatusKeyStyle.Render("K/Space") + ":select",
+		StatusKeyStyle.Render("L/→") + ":open",
+		StatusKeyStyle.Render("J/←") + ":back",
+		StatusKeyStyle.Render("Enter") + ":download",
+		StatusKeyStyle.Render("I") + ":invert",
 		StatusKeyStyle.Render("/") + ":search",
+		StatusKeyStyle.Render("O") + ":icons",
 		StatusKeyStyle.Render("?") + ":help",
 	}
 
@@ -303,7 +323,31 @@ func (m Model) renderStatusBar(icons IconSet) string {
 		spacing = 1
 	}
 
-	return left + strings.Repeat(" ", spacing) + right
+	line := left + strings.Repeat(" ", spacing) + right
+	if len(line) > m.width {
+		return line[:m.width]
+	}
+	return line
+}
+
+func stripANSI(s string) string {
+	var b strings.Builder
+	inEscape := false
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+		if ch == 0x1b {
+			inEscape = true
+			continue
+		}
+		if inEscape {
+			if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') {
+				inEscape = false
+			}
+			continue
+		}
+		b.WriteByte(ch)
+	}
+	return b.String()
 }
 
 // highlightCode applies syntax highlighting to code content
@@ -423,10 +467,10 @@ func (m Model) viewHelp() string {
 		{
 			name: "Navigation",
 			bindings: []struct{ key, desc string }{
-				{"↑/k", "Move up"},
-				{"↓/j", "Move down"},
-				{"←/h/Backspace", "Go back"},
-				{"→/l/Enter", "Enter folder"},
+				{"↑", "Move up"},
+				{"↓", "Move down"},
+				{"J/←", "Go back"},
+				{"L/→", "Enter folder"},
 				{"Home/g", "Go to top"},
 				{"End/G", "Go to bottom"},
 			},
@@ -434,19 +478,20 @@ func (m Model) viewHelp() string {
 		{
 			name: "Selection",
 			bindings: []struct{ key, desc string }{
-				{"Space", "Toggle selection"},
+				{"K/Space", "Toggle selection"},
 				{"a", "Select all"},
 				{"u", "Unselect all"},
+				{"I", "Inverse (confirm)"},
 			},
 		},
 		{
 			name: "Actions",
 			bindings: []struct{ key, desc string }{
-				{"d", "Download selected"},
+				{"Enter", "Download selected (confirm)"},
 				{"p", "Preview file"},
 				{"/", "Search"},
 				{"r", "Refresh"},
-				{"i", "Toggle icons"},
+				{"o", "Toggle icons"},
 			},
 		},
 		{

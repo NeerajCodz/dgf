@@ -14,7 +14,6 @@ import (
 	"github.com/NeerajCodz/dgf/internal/config"
 	"github.com/NeerajCodz/dgf/internal/github"
 	"github.com/NeerajCodz/dgf/internal/selection"
-	"github.com/NeerajCodz/dgf/internal/utils"
 	"github.com/NeerajCodz/dgf/pkg/types"
 )
 
@@ -298,65 +297,73 @@ func (m *Model) handleBrowseKeys(key string) tea.Cmd {
 	itemCount := len(items)
 
 	switch key {
-	case "up", "k":
+	case "up":
 		if m.state.Cursor > 0 {
 			m.state.Cursor--
 		}
-	case "down", "j":
+		m.state.ConfirmDownload = false
+		m.state.ConfirmInverseSelection = false
+	case "down":
 		if m.state.Cursor < itemCount-1 {
 			m.state.Cursor++
 		}
+		m.state.ConfirmDownload = false
+		m.state.ConfirmInverseSelection = false
 	case "home", "g":
 		m.state.Cursor = 0
+		m.state.ConfirmDownload = false
+		m.state.ConfirmInverseSelection = false
 	case "end", "G":
 		if itemCount > 0 {
 			m.state.Cursor = itemCount - 1
 		}
-	case " ":
+		m.state.ConfirmDownload = false
+		m.state.ConfirmInverseSelection = false
+	case " ", "k", "K":
 		if item := m.state.CurrentItem(); item != nil {
 			m.selection.Toggle(item.Path, item.Size)
 			item.Selected = m.selection.IsSelected(item.Path)
 		}
+		m.state.ConfirmDownload = false
+		m.state.ConfirmInverseSelection = false
 	case "a":
 		m.selection.SelectAll(items)
 		m.selection.SyncWithItems(m.state.Items)
 		m.state.ShowToast(fmt.Sprintf("Selected %d items", m.selection.Count()), types.ToastInfo)
+		m.state.ConfirmDownload = false
+		m.state.ConfirmInverseSelection = false
 	case "u":
 		m.selection.UnselectAll()
 		m.selection.SyncWithItems(m.state.Items)
 		m.state.ShowToast("Selection cleared", types.ToastInfo)
-	case "enter", "l", "right":
+		m.state.ConfirmDownload = false
+		m.state.ConfirmInverseSelection = false
+	case "l", "L", "right":
 		if item := m.state.CurrentItem(); item != nil && item.IsDir() {
 			m.state.PushNavigation()
 			return m.navigateToFolder(item.Path)
 		}
-	case "backspace", "b", "h", "left":
+		m.state.ConfirmDownload = false
+		m.state.ConfirmInverseSelection = false
+	case "j", "J", "left":
+		m.state.ConfirmDownload = false
+		m.state.ConfirmInverseSelection = false
 		return m.navigateBack()
-	case "d":
-		if m.selection.HasSelection() {
-			// Show confirmation dialog
-			count := m.selection.Count()
-			fileSizes := make([]int, 0)
-			for _, path := range m.selection.GetSelected() {
-				for _, item := range m.state.Items {
-					if item.Path == path {
-						fileSizes = append(fileSizes, int(item.Size))
-						break
-					}
-				}
-			}
-			formattedSize := utils.FormatSize(fileSizes)
-			m.state.ConfirmDownload = true
-			m.state.ConfirmDownloadSize = formattedSize
-			m.state.ShowToast(fmt.Sprintf("Download %d items (%s)? Press 'c' to confirm or 'd' to cancel", count, formattedSize), types.ToastInfo)
-		} else {
+	case "enter":
+		if !m.selection.HasSelection() {
 			m.state.ShowToast("No items selected", types.ToastWarning)
+			return nil
 		}
-	case "c":
-		if m.state.ConfirmDownload {
-			m.state.ConfirmDownload = false
-			return m.startDownload()
+		return m.startDownload()
+	case "d":
+		m.state.ShowToast("Use Enter to download selected items", types.ToastInfo)
+	case "o", "O":
+		m.state.ASCIIMode = !m.state.ASCIIMode
+		mode := "emoji"
+		if m.state.ASCIIMode {
+			mode = "ASCII"
 		}
+		m.state.ShowToast("Icons: "+mode, types.ToastInfo)
 	case "y":
 		if item := m.state.CurrentItem(); item != nil {
 			err := clipboard.Write(clipboard.FmtText, []byte(item.Path))
@@ -375,14 +382,28 @@ func (m *Model) handleBrowseKeys(key string) tea.Cmd {
 		m.searchInput.Focus()
 		m.state.SetMode(types.ModeSearch)
 		m.state.IsSearching = true
-	case "i":
-		m.state.ASCIIMode = !m.state.ASCIIMode
-		mode := "emoji"
-		if m.state.ASCIIMode {
-			mode = "ASCII"
+	case "i", "I":
+		if m.state.ConfirmInverseSelection {
+			m.state.ConfirmInverseSelection = false
+			selectionSet := make(map[string]struct{}, len(m.selection.GetSelected()))
+			for _, path := range m.selection.GetSelected() {
+				selectionSet[path] = struct{}{}
+			}
+			m.selection.UnselectAll()
+			for _, item := range items {
+				if _, exists := selectionSet[item.Path]; !exists {
+					m.selection.Select(item.Path, item.Size)
+				}
+			}
+			m.selection.SyncWithItems(m.state.Items)
+			m.state.ShowToast(fmt.Sprintf("Inverted selection (%d selected)", m.selection.Count()), types.ToastSuccess)
+			break
 		}
-		m.state.ShowToast("Icons: "+mode, types.ToastInfo)
+		m.state.ConfirmInverseSelection = true
+		m.state.ShowToast("Press I again to confirm inverse selection", types.ToastWarning)
 	case "r":
+		m.state.ConfirmDownload = false
+		m.state.ConfirmInverseSelection = false
 		return m.refreshView()
 	case "?":
 		m.state.SetMode(types.ModeHelp)
@@ -391,7 +412,10 @@ func (m *Model) handleBrowseKeys(key string) tea.Cmd {
 	}
 
 	// Ensure cursor stays within filtered results bounds
-	if m.state.Cursor >= itemCount && itemCount > 0 {
+	if itemCount == 0 {
+		m.state.Cursor = 0
+		m.state.ScrollOffset = 0
+	} else if m.state.Cursor >= itemCount {
 		m.state.Cursor = itemCount - 1
 	}
 
