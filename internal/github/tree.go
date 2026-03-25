@@ -214,3 +214,8 @@ func matchesFormat(fileName string, formats []string) bool {
 	}
 	return false
 }
+
+// FetchFolderRecursive fetches all contents of a folder recursively for download
+func FetchFolderRecursive(client *Client, owner, repo, ref, path string) (types.RepositoryStructure, error) {
+	return FetchStructure(client, owner, repo, ref, path, "dir", nil)
+}

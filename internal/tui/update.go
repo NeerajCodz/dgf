@@ -188,31 +188,52 @@ func (m *Model) startDownload() tea.Cmd {
 	m.state.DownloadTotal = m.selection.Count()
 
 	selected := m.selection.GetSelected()
+	client := m.state.Client
+	owner := m.state.Owner
+	repo := m.state.Repo
+	ref := m.state.GetRef()
+	downloadPath := m.state.DownloadPath
+	token := m.state.Token
+	workers := m.state.Config.Workers
 
 	return func() tea.Msg {
 		// Build structure from selected items
 		structure := types.RepositoryStructure{
 			Files:        make([]string, 0),
+			Folders:      make([]string, 0),
 			DownloadURLs: make([]string, 0),
 			FilesRequest: make([]string, 0),
 			FilesSize:    make([]int, 0),
 		}
 
+		// Process selected items - fetch folder contents recursively
 		for _, path := range selected {
 			for _, item := range m.state.Items {
-				if item.Path == path && item.IsFile() {
-					structure.Files = append(structure.Files, item.Path)
-					structure.DownloadURLs = append(structure.DownloadURLs, item.DownloadURL)
-					structure.FilesRequest = append(structure.FilesRequest, item.Name)
-					structure.FilesSize = append(structure.FilesSize, int(item.Size))
+				if item.Path == path {
+					if item.IsFile() {
+						structure.Files = append(structure.Files, item.Path)
+						structure.DownloadURLs = append(structure.DownloadURLs, item.DownloadURL)
+						structure.FilesRequest = append(structure.FilesRequest, item.Name)
+						structure.FilesSize = append(structure.FilesSize, int(item.Size))
+					} else if item.IsDir() {
+						// Fetch folder contents recursively
+						folderStructure, err := github.FetchFolderRecursive(client, owner, repo, ref, item.Path)
+						if err == nil {
+							structure.Folders = append(structure.Folders, folderStructure.Folders...)
+							structure.Files = append(structure.Files, folderStructure.Files...)
+							structure.DownloadURLs = append(structure.DownloadURLs, folderStructure.DownloadURLs...)
+							structure.FilesRequest = append(structure.FilesRequest, folderStructure.FilesRequest...)
+							structure.FilesSize = append(structure.FilesSize, folderStructure.FilesSize...)
+						}
+					}
 				}
 			}
 		}
 
 		err := github.Download(structure, github.DownloadOptions{
-			OutputDir: m.state.DownloadPath,
-			Token:     m.state.Token,
-			Workers:   m.state.Config.Workers,
+			OutputDir: downloadPath,
+			Token:     token,
+			Workers:   workers,
 		})
 
 		return downloadDoneMsg{count: len(structure.Files), err: err}
