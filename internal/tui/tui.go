@@ -75,12 +75,14 @@ func NewModel(initialURL, token string) Model {
 	// Create GitHub client
 	state.Client = github.NewClient(state.Token)
 
-	// Pre-fill URL if provided
+	// Pre-fill URL if provided and mark for auto-fetch
+	autoFetch := false
 	if initialURL != "" {
 		urlInput.SetValue(initialURL)
+		autoFetch = true
 	}
 
-	return Model{
+	m := Model{
 		state:       state,
 		keys:        DefaultKeyMap(),
 		selection:   selection.NewManager(),
@@ -88,14 +90,29 @@ func NewModel(initialURL, token string) Model {
 		searchInput: searchInput,
 		spinner:     sp,
 	}
+
+	// Mark for auto-fetch after init
+	if autoFetch {
+		m.state.AutoFetch = true
+	}
+
+	return m
 }
 
 // Init initializes the model
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(
+	cmds := []tea.Cmd{
 		textinput.Blink,
 		m.spinner.Tick,
-	)
+	}
+	
+	// Auto-fetch if URL was provided
+	if m.state.AutoFetch {
+		m.state.AutoFetch = false
+		cmds = append(cmds, m.fetchRepository(m.urlInput.Value()))
+	}
+	
+	return tea.Batch(cmds...)
 }
 
 // Update handles messages and updates the model

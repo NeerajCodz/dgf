@@ -65,6 +65,9 @@ type AppState struct {
 
 	// GitHub client
 	Client *github.Client
+
+	// AutoFetch triggers automatic repository fetch on startup
+	AutoFetch bool
 }
 
 // NewAppState creates a new application state with defaults
