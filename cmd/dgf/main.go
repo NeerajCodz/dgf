@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/NeerajCodz/dgf/internal/agent"
 	"github.com/NeerajCodz/dgf/internal/cli"
 	"github.com/NeerajCodz/dgf/internal/config"
 	"github.com/NeerajCodz/dgf/internal/tui"
@@ -120,24 +121,39 @@ func handleAgentCommand(args []string) {
 		os.Exit(1)
 	}
 
+	// Get token from env or config
+	token := os.Getenv("GITHUB_TOKEN")
+	if token == "" {
+		cfg, _ := config.Load()
+		token = cfg.GithubToken
+	}
+
 	switch args[0] {
 	case "tree":
 		if len(args) < 2 {
 			fmt.Fprintf(os.Stderr, "Usage: dgf agent tree <url>\n")
 			os.Exit(1)
 		}
-		// TODO: Implement agent tree command
-		fmt.Fprintf(os.Stderr, "Agent tree command not yet implemented\n")
-		os.Exit(1)
+		agent.Tree(args[1], token)
 
 	case "download":
-		if len(args) < 2 {
-			fmt.Fprintf(os.Stderr, "Usage: dgf agent download <url> [paths...]\n")
+		if len(args) < 3 {
+			fmt.Fprintf(os.Stderr, "Usage: dgf agent download <url> <paths...> [--out <dir>]\n")
 			os.Exit(1)
 		}
-		// TODO: Implement agent download command
-		fmt.Fprintf(os.Stderr, "Agent download command not yet implemented\n")
-		os.Exit(1)
+		url := args[1]
+		paths := make([]string, 0)
+		outputDir := "."
+		
+		for i := 2; i < len(args); i++ {
+			if args[i] == "--out" && i+1 < len(args) {
+				outputDir = args[i+1]
+				i++
+			} else {
+				paths = append(paths, args[i])
+			}
+		}
+		agent.Download(url, token, outputDir, paths)
 
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown agent command: %s\n", args[0])
