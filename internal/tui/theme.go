@@ -1,0 +1,366 @@
+package tui
+
+import (
+	"strings"
+	
+	"github.com/charmbracelet/lipgloss"
+)
+
+// Theme colors for the TUI - Tokyo Night inspired
+var (
+	// Base colors
+	ColorBackground = lipgloss.Color("#1a1b26")
+	ColorForeground = lipgloss.Color("#c0caf5")
+	ColorSubtle     = lipgloss.Color("#565f89")
+	ColorHighlight  = lipgloss.Color("#7aa2f7")
+	ColorBorder     = lipgloss.Color("#3b4261")
+	ColorAccent     = lipgloss.Color("#bb9af7")
+
+	// Semantic colors
+	ColorSuccess = lipgloss.Color("#9ece6a")
+	ColorWarning = lipgloss.Color("#e0af68")
+	ColorError   = lipgloss.Color("#f7768e")
+	ColorInfo    = lipgloss.Color("#7dcfff")
+
+	// Item colors
+	ColorFolder     = lipgloss.Color("#7aa2f7")
+	ColorFile       = lipgloss.Color("#c0caf5")
+	ColorSelected   = lipgloss.Color("#9ece6a")
+	ColorCursor     = lipgloss.Color("#292e42")
+	ColorCursorText = lipgloss.Color("#bb9af7")
+	ColorLFS        = lipgloss.Color("#ff9e64")
+	
+	// Header colors
+	ColorLogo       = lipgloss.Color("#bb9af7")
+	ColorBreadcrumb = lipgloss.Color("#7dcfff")
+)
+
+// Styles
+var (
+	// Base styles
+	BaseStyle = lipgloss.NewStyle().
+			Background(ColorBackground).
+			Foreground(ColorForeground)
+
+	TitleStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(ColorHighlight).
+			Padding(0, 1)
+
+	SubtitleStyle = lipgloss.NewStyle().
+			Foreground(ColorSubtle).
+			Italic(true)
+
+	// Border styles
+	BorderStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(ColorBorder)
+
+	ActiveBorderStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(ColorHighlight)
+
+	// Item styles
+	FolderStyle = lipgloss.NewStyle().
+			Foreground(ColorFolder).
+			Bold(true)
+
+	FileStyle = lipgloss.NewStyle().
+			Foreground(ColorFile)
+
+	SelectedStyle = lipgloss.NewStyle().
+			Foreground(ColorSelected).
+			Bold(true)
+
+	CursorStyle = lipgloss.NewStyle().
+			Background(ColorCursor).
+			Foreground(ColorCursorText).
+			Bold(true)
+
+	// Status bar styles
+	StatusBarStyle = lipgloss.NewStyle().
+			Background(ColorBorder).
+			Foreground(ColorForeground).
+			Padding(0, 1)
+
+	StatusKeyStyle = lipgloss.NewStyle().
+			Foreground(ColorAccent).
+			Bold(true)
+			
+	StatusValueStyle = lipgloss.NewStyle().
+			Foreground(ColorSuccess).
+			Bold(true)
+
+	// Toast styles
+	ToastBaseStyle = lipgloss.NewStyle().
+			Padding(0, 2).
+			Margin(1, 2)
+
+	ToastSuccessStyle = ToastBaseStyle.
+				Background(ColorSuccess).
+				Foreground(ColorBackground)
+
+	ToastErrorStyle = ToastBaseStyle.
+			Background(ColorError).
+			Foreground(ColorBackground)
+
+	ToastWarningStyle = ToastBaseStyle.
+				Background(ColorWarning).
+				Foreground(ColorBackground)
+
+	ToastInfoStyle = ToastBaseStyle.
+			Background(ColorInfo).
+			Foreground(ColorBackground)
+
+	// Input styles
+	InputStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(ColorBorder).
+			Padding(0, 1)
+
+	InputFocusedStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(ColorHighlight).
+				Padding(0, 1)
+
+	// Help styles
+	HelpKeyStyle = lipgloss.NewStyle().
+			Foreground(ColorHighlight).
+			Bold(true)
+
+	HelpDescStyle = lipgloss.NewStyle().
+			Foreground(ColorSubtle)
+
+	// Progress bar styles
+	ProgressBarStyle = lipgloss.NewStyle().
+				Foreground(ColorHighlight)
+
+	ProgressTextStyle = lipgloss.NewStyle().
+				Foreground(ColorSubtle)
+
+	// Breadcrumb styles
+	BreadcrumbStyle = lipgloss.NewStyle().
+			Foreground(ColorHighlight)
+
+	BreadcrumbSepStyle = lipgloss.NewStyle().
+				Foreground(ColorSubtle)
+
+	// Preview styles
+	PreviewTitleStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(ColorHighlight).
+				Padding(0, 1)
+
+	PreviewContentStyle = lipgloss.NewStyle().
+				Foreground(ColorForeground)
+
+	// Size display
+	SizeStyle = lipgloss.NewStyle().
+			Foreground(ColorSubtle).
+			Align(lipgloss.Right)
+
+	// Modal styles
+	ModalStyle = lipgloss.NewStyle().
+			Border(lipgloss.DoubleBorder()).
+			BorderForeground(ColorHighlight).
+			Padding(1, 2)
+
+	// Search styles
+	SearchStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(ColorInfo).
+			Padding(0, 1)
+
+	MatchHighlightStyle = lipgloss.NewStyle().
+				Background(ColorHighlight).
+				Foreground(ColorBackground)
+)
+
+// Icons (emoji and ASCII versions)
+type IconSet struct {
+	Folder      string
+	FolderOpen  string
+	File        string
+	Selected    string
+	Unselected  string
+	ArrowRight  string
+	ArrowLeft   string
+	ArrowUp     string
+	ArrowDown   string
+	Search      string
+	Download    string
+	Loading     string
+	Success     string
+	Error       string
+	Warning     string
+	Info        string
+	LFS         string
+}
+
+var EmojiIcons = IconSet{
+	Folder:      "📁",
+	FolderOpen:  "📂",
+	File:        "📄",
+	Selected:    "✓",
+	Unselected:  "○",
+	ArrowRight:  "→",
+	ArrowLeft:   "←",
+	ArrowUp:     "↑",
+	ArrowDown:   "↓",
+	Search:      "🔍",
+	Download:    "⬇️",
+	Loading:     "⏳",
+	Success:     "✅",
+	Error:       "❌",
+	Warning:     "⚠️",
+	Info:        "ℹ️",
+	LFS:         "📦",
+}
+
+var ASCIIIcons = IconSet{
+	Folder:      "[DIR]",
+	FolderOpen:  "[DIR]",
+	File:        "[FILE]",
+	Selected:    "[x]",
+	Unselected:  "[ ]",
+	ArrowRight:  "->",
+	ArrowLeft:   "<-",
+	ArrowUp:     "^",
+	ArrowDown:   "v",
+	Search:      "[?]",
+	Download:    "[DL]",
+	Loading:     "[...]",
+	Success:     "[OK]",
+	Error:       "[ERR]",
+	Warning:     "[!]",
+	Info:        "[i]",
+	LFS:         "[LFS]",
+}
+
+// GetIcons returns the appropriate icon set
+func GetIcons(ascii bool) IconSet {
+	if ascii {
+		return ASCIIIcons
+	}
+	return EmojiIcons
+}
+
+// GetFileTypeAndIcon returns the file type string and icon based on file extension
+func GetFileTypeAndIcon(filename string, isDir bool) (string, string) {
+	if isDir {
+		return "directory", "📁"
+	}
+	
+	// Extract extension
+	ext := ""
+	for i := len(filename) - 1; i >= 0; i-- {
+		if filename[i] == '.' {
+			ext = filename[i+1:]
+			break
+		}
+	}
+	ext = strings.ToLower(ext)
+	
+	// Map extensions to types and icons
+	switch ext {
+	// Images
+	case "jpg", "jpeg", "png", "gif", "bmp", "webp", "svg", "ico":
+		return "image", "🖼️"
+	
+	// Videos
+	case "mp4", "avi", "mkv", "mov", "wmv", "flv", "webm":
+		return "video", "🎬"
+	
+	// Audio
+	case "mp3", "wav", "ogg", "m4a", "flac":
+		return "audio", "🎵"
+	
+	// Documents
+	case "pdf":
+		return "pdf", "📕"
+	case "doc", "docx":
+		return "word", "📘"
+	case "xls", "xlsx":
+		return "excel", "📗"
+	case "ppt", "pptx":
+		return "powerpoint", "📙"
+	case "txt", "md", "markdown":
+		return "text", "📝"
+	
+	// Programming Languages
+	case "go":
+		return "golang", "🐹"
+	case "py":
+		return "python", "🐍"
+	case "js", "jsx":
+		return "javascript", "📜"
+	case "ts", "tsx":
+		return "typescript", "📘"
+	case "java":
+		return "java", "☕"
+	case "c", "cpp", "cc", "h", "hpp":
+		return "c/c++", "⚙️"
+	case "rs":
+		return "rust", "🦀"
+	case "rb":
+		return "ruby", "💎"
+	case "php":
+		return "php", "🐘"
+	case "swift":
+		return "swift", "🦅"
+	case "kt":
+		return "kotlin", "🅺"
+	case "cs":
+		return "c#", "🔷"
+	
+	// Data & Config
+	case "json":
+		return "json", "📋"
+	case "xml":
+		return "xml", "📰"
+	case "yaml", "yml":
+		return "yaml", "📄"
+	case "toml":
+		return "toml", "📄"
+	case "ini", "conf", "config":
+		return "config", "⚙️"
+	
+	// Database
+	case "sql":
+		return "sql", "🗄️"
+	case "db", "sqlite", "sqlite3":
+		return "database", "💾"
+	
+	// Archives
+	case "zip", "tar", "gz", "rar", "7z":
+		return "archive", "📦"
+	
+	// Web
+	case "html", "htm":
+		return "html", "🌐"
+	case "css", "scss", "sass", "less":
+		return "stylesheet", "🎨"
+	
+	// Shell/Scripts
+	case "sh", "bash", "zsh":
+		return "shell", "🐚"
+	case "bat", "cmd", "ps1":
+		return "script", "📜"
+	
+	// Misc
+	case "exe", "bin", "app":
+		return "executable", "⚡"
+	case "dll", "so", "dylib":
+		return "library", "📚"
+	case "log":
+		return "log", "📃"
+	case "env":
+		return "env", "🔐"
+	case "lock":
+		return "lockfile", "🔒"
+	
+	default:
+		return "file", "📄"
+	}
+}
+

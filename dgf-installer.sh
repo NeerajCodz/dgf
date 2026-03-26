@@ -18,6 +18,8 @@ JQ=$(command -v jq)
 MAX_RETRIES=3
 RETRY_DELAY=5
 TEMP_FILES=()
+LAST_CURL_ERROR=""
+TMP_DIR="${TMPDIR:-/tmp}"
 
 # Function to clean up temporary files
 cleanup() {
@@ -27,8 +29,8 @@ cleanup() {
     done
 }
 
-# Trap to ensure cleanup on script exit
-trap cleanup EXIT
+# Trap to ensure cleanup on script exit and interruption
+trap cleanup EXIT INT TERM
 
 # Function to print error and exit
 error_exit() {
@@ -53,21 +55,28 @@ warning() {
     echo "[!] $1"
 }
 
+# Function to create temporary files in a portable location
+make_temp_file() {
+    mktemp "${TMP_DIR}/dgf-installer.XXXXXX" 2>/dev/null || return 1
+}
+
 # Function to fetch with retries
 fetch_with_retries() {
     local url=$1
     local output=$2
     local attempt=1
+    local err_file
+    err_file=$(make_temp_file) || error_exit "Failed to create temporary file for curl errors"
+    TEMP_FILES+=("$err_file")
+    LAST_CURL_ERROR="$err_file"
     TEMP_FILES+=("$output")
     while [ $attempt -le $MAX_RETRIES ]; do
         debug "Attempt $attempt: curl -sL -w \"%{http_code}\" \"$url\" -o \"$output\""
-        HTTP_STATUS=$(curl -sL -w "%{http_code}" "$url" -o "$output" 2> "/tmp/curl_error_$$.log" || echo "000")
+        HTTP_STATUS=$("$CURL" -sL -w "%{http_code}" "$url" -o "$output" 2> "$err_file" || echo "000")
         if [ "$HTTP_STATUS" = "200" ]; then
-            TEMP_FILES+=("/tmp/curl_error_$$.log")
             return 0
         fi
-        warning "Attempt $attempt failed with HTTP $HTTP_STATUS: $(cat "/tmp/curl_error_$$.log" 2>/dev/null || echo 'Unknown error')"
-        TEMP_FILES+=("/tmp/curl_error_$$.log")
+        warning "Attempt $attempt failed with HTTP $HTTP_STATUS: $(cat "$err_file" 2>/dev/null || echo 'Unknown error')"
         [ $attempt -lt $MAX_RETRIES ] && sleep $RETRY_DELAY
         ((attempt++))
     done
@@ -135,8 +144,37 @@ while [ $# -gt 0 ]; do
                 shift
             fi
             ;;
+        -h|--help)
+            echo "DGF Installer v2.0"
+            echo ""
+            echo "Usage: $0 [OPTIONS]"
+            echo ""
+            echo "OPTIONS:"
+            echo "  -v, --version <version>        Version to install (default: latest, e.g., 2.0.0)"
+            echo "  -os, --os <os>                 Operating system: linux, darwin, windows, android"
+            echo "  -arch, --arch <arch>           Architecture: amd64, arm64, arm"
+            echo "  --download-only                Download only, do not install"
+            echo "  --no-rename                    Keep original filename instead of renaming to 'dgf' or 'dgf.exe'"
+            echo "  --debug                        Enable debug output"
+            echo "  -u, --uninstall [path]         Uninstall dgf from specified path or default locations"
+            echo "  -h, --help                     Show this help message"
+            echo ""
+            echo "EXAMPLES:"
+            echo "  # Install latest version with sudo"
+            echo "  sudo ./dgf-installer.sh"
+            echo ""
+            echo "  # Install specific version"
+            echo "  sudo ./dgf-installer.sh -v 2.0.0"
+            echo ""
+            echo "  # Download only (no installation)"
+            echo "  ./dgf-installer.sh --download-only"
+            echo ""
+            echo "  # Uninstall"
+            echo "  sudo ./dgf-installer.sh --uninstall"
+            exit 0
+            ;;
         *)
-            echo "Usage: $0 [-v <version>] [-os <linux|darwin|windows|android>] [-arch <amd64|arm64|arm>] [--download-only] [--no-rename] [--debug] [-u|--uninstall [path]]"
+            echo "Usage: $0 [-v <version>] [-os <linux|darwin|windows|android>] [-arch <amd64|arm64|arm>] [--download-only] [--no-rename] [--debug] [-u|--uninstall [path]] [-h|--help]"
             exit 1
             ;;
     esac
@@ -149,15 +187,16 @@ done
 # Uninstall logic
 if [ "$UNINSTALL" = "true" ]; then
     info "Uninstalling dgf..."
+    RM_ERR_FILE=$(make_temp_file) || error_exit "Failed to create temp file for uninstall errors"
+    TEMP_FILES+=("$RM_ERR_FILE")
     FOUND=false
     if [ -n "$UNINSTALL_DIR" ]; then
         if [ -f "$UNINSTALL_DIR/dgf" ]; then
             info "Removing dgf from $UNINSTALL_DIR"
             debug "Executing rm $UNINSTALL_DIR/dgf"
-            rm "$UNINSTALL_DIR/dgf" 2> "/tmp/rm_error_$$.log" || {
-                error_exit "Failed to remove $UNINSTALL_DIR/dgf: $(cat "/tmp/rm_error_$$.log" 2>/dev/null || echo 'Unknown error')"
+            rm "$UNINSTALL_DIR/dgf" 2> "$RM_ERR_FILE" || {
+                error_exit "Failed to remove $UNINSTALL_DIR/dgf: $(cat "$RM_ERR_FILE" 2>/dev/null || echo 'Unknown error')"
             }
-            TEMP_FILES+=("/tmp/rm_error_$$.log")
             info "dgf removed from $UNINSTALL_DIR"
             FOUND=true
         else
@@ -167,20 +206,18 @@ if [ "$UNINSTALL" = "true" ]; then
         if [ -f "/usr/local/bin/dgf" ]; then
             info "Removing dgf from /usr/local/bin"
             debug "Executing sudo rm /usr/local/bin/dgf"
-            sudo rm "/usr/local/bin/dgf" 2> "/tmp/rm_error_$$.log" || {
-                error_exit "Failed to remove /usr/local/bin/dgf: $(cat "/tmp/rm_error_$$.log" 2>/dev/null || echo 'Unknown error')"
+            sudo rm "/usr/local/bin/dgf" 2> "$RM_ERR_FILE" || {
+                error_exit "Failed to remove /usr/local/bin/dgf: $(cat "$RM_ERR_FILE" 2>/dev/null || echo 'Unknown error')"
             }
-            TEMP_FILES+=("/tmp/rm_error_$$.log")
             info "dgf removed from /usr/local/bin"
             FOUND=true
         fi
         if [ -f "$HOME/bin/dgf" ]; then
             info "Removing dgf from $HOME/bin"
             debug "Executing rm $HOME/bin/dgf"
-            rm "$HOME/bin/dgf" 2> "/tmp/rm_error_$$.log" || {
-                error_exit "Failed to remove $HOME/bin/dgf: $(cat "/tmp/rm_error_$$.log" 2>/dev/null || echo 'Unknown error')"
+            rm "$HOME/bin/dgf" 2> "$RM_ERR_FILE" || {
+                error_exit "Failed to remove $HOME/bin/dgf: $(cat "$RM_ERR_FILE" 2>/dev/null || echo 'Unknown error')"
             }
-            TEMP_FILES+=("/tmp/rm_error_$$.log")
             info "dgf removed from $HOME/bin"
             FOUND=true
         fi
@@ -226,9 +263,8 @@ debug "Raw uname -s: $(uname -s), uname -m: $(uname -m)"
 # Determine installation directory
 INSTALL_DIR="/usr/local/bin"
 if [ "$DOWNLOAD_ONLY" = "false" ] && [ "$OS" != "windows" ]; then
-    [ "$(id -u)" -ne 0 ] && error_exit "Root privileges required for installation to /usr/local/bin. Use sudo."
-    if [ ! -w "$INSTALL_DIR" ] || [ ! -d "$INSTALL_DIR" ]; then
-        INSTALL_DIR="$HOME/bin"
+    if [ "$(id -u)" -ne 0 ]; then
+        INSTALL_DIR="$HOME/.local/bin"
         mkdir -p "$INSTALL_DIR" || error_exit "Failed to create $INSTALL_DIR"
         warning "Installing to $INSTALL_DIR instead of /usr/local/bin due to permissions"
         export PATH="$PATH:$INSTALL_DIR"
@@ -255,8 +291,10 @@ fi
 
 # Fetch latest release tag
 LATEST_VERSION=""
-if fetch_with_retries "$API_LATEST_URL" "/tmp/latest_release_$$.json"; then
-    LATEST_VERSION=$(cat "/tmp/latest_release_$$.json" | jq -r '.tag_name' 2>/dev/null || warning "Failed to extract latest release tag")
+LATEST_RELEASE_FILE=$(make_temp_file) || error_exit "Failed to create temp file for latest release metadata"
+TEMP_FILES+=("$LATEST_RELEASE_FILE")
+if fetch_with_retries "$API_LATEST_URL" "$LATEST_RELEASE_FILE"; then
+    LATEST_VERSION=$(jq -r '.tag_name' "$LATEST_RELEASE_FILE" 2>/dev/null || warning "Failed to extract latest release tag")
     [ -z "$LATEST_VERSION" ] && error_exit "Failed to fetch latest release tag"
     debug "Latest release tag from GitHub: $LATEST_VERSION"
 else
@@ -300,24 +338,28 @@ fi
 
 # Fetch GitHub API releases data for asset details
 info "Fetching releases from $API_URL"
-if ! fetch_with_retries "$API_URL" "/tmp/releases_$$.json"; then
+RELEASES_FILE=$(make_temp_file) || error_exit "Failed to create temp file for releases payload"
+TEMP_FILES+=("$RELEASES_FILE")
+if ! fetch_with_retries "$API_URL" "$RELEASES_FILE"; then
     warning "Failed to fetch GitHub API releases after $MAX_RETRIES attempts, proceeding with metadata.json only"
     RELEASES=""
 else
-    RELEASES=$(cat "/tmp/releases_$$.json")
+    RELEASES=$(cat "$RELEASES_FILE")
     [ -z "$RELEASES" ] && warning "Releases data is empty, proceeding with metadata.json only"
 fi
 
-# Determine metadata URL
-METADATA_URL="${BASE_URL}/download/${VERSION}/metadata.json"
+# Determine metadata URL (v2.0 uses versioned metadata file)
+METADATA_URL="${BASE_URL}/download/${VERSION}/metadata-${VERSION}.json"
 debug "Metadata URL: $METADATA_URL"
 
 # Fetch metadata with HTTP status check
 info "Fetching metadata from $METADATA_URL"
-if ! fetch_with_retries "$METADATA_URL" "/tmp/metadata_$$.json"; then
-    error_exit "Failed to fetch metadata after $MAX_RETRIES attempts: $(cat "/tmp/curl_error_$$.log" 2>/dev/null || echo 'Unknown error')"
+METADATA_FILE=$(make_temp_file) || error_exit "Failed to create temp file for metadata payload"
+TEMP_FILES+=("$METADATA_FILE")
+if ! fetch_with_retries "$METADATA_URL" "$METADATA_FILE"; then
+    error_exit "Failed to fetch metadata after $MAX_RETRIES attempts: $(cat "$LAST_CURL_ERROR" 2>/dev/null || echo 'Unknown error')"
 fi
-METADATA=$(cat "/tmp/metadata_$$.json")
+METADATA=$(cat "$METADATA_FILE")
 [ -z "$METADATA" ] && error_exit "Metadata is empty or invalid"
 debug "Metadata content: $METADATA"
 
@@ -329,14 +371,26 @@ FILESIZE=$(echo "$METADATA" | jq -r --arg os "$OS" --arg arch "$ARCH" \
     '.[] | select(.goos == $os and .goarch == $arch) | .size_bytes' 2>/dev/null || echo "null")
 debug "Extracted filename: $FILENAME, metadata size: $FILESIZE bytes"
 
-# Fetch size and SHA256 from GitHub API
+# Extract SHA256 from metadata (v2.0+)
+METADATA_SHA256=$(echo "$METADATA" | jq -r --arg os "$OS" --arg arch "$ARCH" \
+    '.[] | select(.goos == $os and .goarch == $arch) | .sha256' 2>/dev/null || echo "null")
+
+# Fetch size from GitHub API as backup
 API_SIZE="null"
 API_SHA256="null"
 if [ -n "$RELEASES" ]; then
     API_SIZE=$(echo "$RELEASES" | jq -r --arg fname "$FILENAME" \
         '.[0].assets[] | select(.name == $fname) | .size' 2>/dev/null || echo "null")
+fi
+
+# Prefer metadata SHA256, fallback to API if available
+if [ "$METADATA_SHA256" != "null" ] && [ -n "$METADATA_SHA256" ]; then
+    API_SHA256="$METADATA_SHA256"
+    debug "Using SHA256 from metadata: $API_SHA256"
+elif [ -n "$RELEASES" ]; then
     API_SHA256=$(echo "$RELEASES" | jq -r --arg fname "$FILENAME" \
         '.[0].assets[] | select(.name == $fname) | .digest | ltrimstr("sha256:")' 2>/dev/null || echo "null")
+    debug "Falling back to GitHub API digest: $API_SHA256"
 fi
 debug "GitHub API size: $API_SIZE bytes, SHA256: $API_SHA256"
 
@@ -348,9 +402,9 @@ debug "Download URL: $DOWNLOAD_URL"
 info "Downloading $FILENAME from $DOWNLOAD_URL"
 debug "Executing fetch_with_retries \"$DOWNLOAD_URL\" \"$FILENAME\""
 if ! fetch_with_retries "$DOWNLOAD_URL" "$FILENAME"; then
-    debug "Download failed. Contents of /tmp/curl_error_$$.log:"
-    debug "$(cat "/tmp/curl_error_$$.log" 2>/dev/null || echo 'No error log available')"
-    error_exit "Failed to download binary after $MAX_RETRIES attempts: $(cat "/tmp/curl_error_$$.log" 2>/dev/null || echo 'Unknown error')"
+    debug "Download failed. Curl error output:"
+    debug "$(cat "$LAST_CURL_ERROR" 2>/dev/null || echo 'No error log available')"
+    error_exit "Failed to download binary after $MAX_RETRIES attempts: $(cat "$LAST_CURL_ERROR" 2>/dev/null || echo 'Unknown error')"
 fi
 [ -f "$FILENAME" ] || error_exit "Downloaded file $FILENAME does not exist"
 
@@ -368,21 +422,21 @@ fi
 # Verify SHA256 checksum if available
 if [ -n "$API_SHA256" ] && [ "$API_SHA256" != "null" ]; then
     debug "Verifying SHA256 checksum: $API_SHA256"
+    SHA_ERR_FILE=$(make_temp_file) || error_exit "Failed to create temp file for checksum validation"
+    TEMP_FILES+=("$SHA_ERR_FILE")
     if command -v sha256sum >/dev/null; then
-        echo "$API_SHA256 $FILENAME" | sha256sum -c 2> "/tmp/sha_error_$$.log" || {
-            error_exit "Checksum validation failed: $(cat "/tmp/sha_error_$$.log" 2>/dev/null || echo 'Unknown error')"
+        echo "$API_SHA256 $FILENAME" | sha256sum -c 2> "$SHA_ERR_FILE" || {
+            error_exit "Checksum validation failed: $(cat "$SHA_ERR_FILE" 2>/dev/null || echo 'Unknown error')"
         }
-        TEMP_FILES+=("/tmp/sha_error_$$.log")
     elif command -v shasum >/dev/null; then
-        echo "$API_SHA256 $FILENAME" | shasum -a 256 -c 2> "/tmp/sha_error_$$.log" || {
-            error_exit "Checksum validation failed: $(cat "/tmp/sha_error_$$.log" 2>/dev/null || echo 'Unknown error')"
+        echo "$API_SHA256 $FILENAME" | shasum -a 256 -c 2> "$SHA_ERR_FILE" || {
+            error_exit "Checksum validation failed: $(cat "$SHA_ERR_FILE" 2>/dev/null || echo 'Unknown error')"
         }
-        TEMP_FILES+=("/tmp/sha_error_$$.log")
     else
-        warning "No sha256sum or shasum found, skipping checksum validation"
+        error_exit "No sha256sum or shasum found; cannot validate binary integrity"
     fi
 else
-    warning "No SHA256 checksum provided in GitHub API, skipping validation"
+    error_exit "No SHA256 checksum available for this asset; aborting for safety"
 fi
 
 # Handle renaming
@@ -396,10 +450,11 @@ if [ "$NO_RENAME" = "false" ]; then
     [ -f "$TARGET_NAME" ] && error_exit "Target file $TARGET_NAME already exists"
     info "Renaming $FILENAME to $TARGET_NAME"
     debug "Executing mv \"$FILENAME\" \"$TARGET_NAME\""
-    mv "$FILENAME" "$TARGET_NAME" 2> "/tmp/mv_error_$$.log" || {
-        error_exit "Failed to rename file: $(cat "/tmp/mv_error_$$.log" 2>/dev/null || echo 'Unknown error')"
+    MV_ERR_FILE=$(make_temp_file) || error_exit "Failed to create temp file for rename errors"
+    TEMP_FILES+=("$MV_ERR_FILE")
+    mv "$FILENAME" "$TARGET_NAME" 2> "$MV_ERR_FILE" || {
+        error_exit "Failed to rename file: $(cat "$MV_ERR_FILE" 2>/dev/null || echo 'Unknown error')"
     }
-    TEMP_FILES+=("/tmp/mv_error_$$.log")
 fi
 
 # If download-only, exit here
@@ -413,39 +468,40 @@ case "$OS" in
     linux|android)
         info "Installing $TARGET_NAME to $INSTALL_DIR"
         debug "Executing mv \"$TARGET_NAME\" $INSTALL_DIR/"
-        mv "$TARGET_NAME" "$INSTALL_DIR/" 2> "/tmp/mv_error_$$.log" || {
-            error_exit "Failed to move binary to $INSTALL_DIR: $(cat "/tmp/mv_error_$$.log" 2>/dev/null || echo 'Unknown error')"
+        INSTALL_ERR_FILE=$(make_temp_file) || error_exit "Failed to create temp file for install errors"
+        TEMP_FILES+=("$INSTALL_ERR_FILE")
+        mv "$TARGET_NAME" "$INSTALL_DIR/" 2> "$INSTALL_ERR_FILE" || {
+            error_exit "Failed to move binary to $INSTALL_DIR: $(cat "$INSTALL_ERR_FILE" 2>/dev/null || echo 'Unknown error')"
         }
-        TEMP_FILES+=("/tmp/mv_error_$$.log")
         debug "Setting executable permissions on $INSTALL_DIR/$TARGET_NAME"
-        chmod +x "$INSTALL_DIR/$TARGET_NAME" 2> "/tmp/chmod_error_$$.log" || {
-            error_exit "Failed to set executable permissions: $(cat "/tmp/chmod_error_$$.log" 2>/dev/null || echo 'Unknown error')"
+        chmod +x "$INSTALL_DIR/$TARGET_NAME" 2> "$INSTALL_ERR_FILE" || {
+            error_exit "Failed to set executable permissions: $(cat "$INSTALL_ERR_FILE" 2>/dev/null || echo 'Unknown error')"
         }
-        TEMP_FILES+=("/tmp/chmod_error_$$.log")
         ;;
     windows)
         info "Installing $TARGET_NAME to C:\\Program Files\\dgf"
         debug "Creating directory C:\\Program Files\\dgf"
         mkdir -p "C:\\Program Files\\dgf" || error_exit "Failed to create directory (ensure you have admin privileges)"
         debug "Executing mv \"$TARGET_NAME\" \"C:\\Program Files\\dgf\\$TARGET_NAME\""
-        mv "$TARGET_NAME" "C:\\Program Files\\dgf\\$TARGET_NAME" 2> "/tmp/mv_error_$$.log" || {
-            error_exit "Failed to move binary: $(cat "/tmp/mv_error_$$.log" 2>/dev/null || echo 'Unknown error')"
+        INSTALL_ERR_FILE=$(make_temp_file) || error_exit "Failed to create temp file for install errors"
+        TEMP_FILES+=("$INSTALL_ERR_FILE")
+        mv "$TARGET_NAME" "C:\\Program Files\\dgf\\$TARGET_NAME" 2> "$INSTALL_ERR_FILE" || {
+            error_exit "Failed to move binary: $(cat "$INSTALL_ERR_FILE" 2>/dev/null || echo 'Unknown error')"
         }
-        TEMP_FILES+=("/tmp/mv_error_$$.log")
         info "Please add 'C:\\Program Files\\dgf' to your system PATH manually."
         ;;
     darwin)
         info "Installing $TARGET_NAME to $INSTALL_DIR"
         debug "Executing mv \"$TARGET_NAME\" $INSTALL_DIR/"
-        mv "$TARGET_NAME" "$INSTALL_DIR/" 2> "/tmp/mv_error_$$.log" || {
-            error_exit "Failed to move binary to $INSTALL_DIR: $(cat "/tmp/mv_error_$$.log" 2>/dev/null || echo 'Unknown error')"
+        INSTALL_ERR_FILE=$(make_temp_file) || error_exit "Failed to create temp file for install errors"
+        TEMP_FILES+=("$INSTALL_ERR_FILE")
+        mv "$TARGET_NAME" "$INSTALL_DIR/" 2> "$INSTALL_ERR_FILE" || {
+            error_exit "Failed to move binary to $INSTALL_DIR: $(cat "$INSTALL_ERR_FILE" 2>/dev/null || echo 'Unknown error')"
         }
-        TEMP_FILES+=("/tmp/mv_error_$$.log")
         debug "Setting executable permissions on $INSTALL_DIR/$TARGET_NAME"
-        chmod +x "$INSTALL_DIR/$TARGET_NAME" 2> "/tmp/chmod_error_$$.log" || {
-            error_exit "Failed to set executable permissions: $(cat "/tmp/chmod_error_$$.log" 2>/dev/null || echo 'Unknown error')"
+        chmod +x "$INSTALL_DIR/$TARGET_NAME" 2> "$INSTALL_ERR_FILE" || {
+            error_exit "Failed to set executable permissions: $(cat "$INSTALL_ERR_FILE" 2>/dev/null || echo 'Unknown error')"
         }
-        TEMP_FILES+=("/tmp/chmod_error_$$.log")
         ;;
     *)
         error_exit "Unsupported OS for installation: $OS"
