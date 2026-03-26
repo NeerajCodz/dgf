@@ -166,6 +166,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case fetchDoneMsg:
 		m.state.CancelOperation()
 		if msg.err == nil {
+			if m.state.Commit == "" {
+				m.state.BranchHeadSHA = msg.branchHeadSHA
+				if m.state.BranchHeadSHA != "" && m.state.Branch != "" {
+					m.state.BranchHeadCache[m.state.BranchHeadCacheKey(m.state.Branch)] = m.state.BranchHeadSHA
+				}
+			} else {
+				m.state.BranchHeadSHA = ""
+			}
 			m.state.SetMode(types.ModeBrowse)
 			m.state.Items = msg.items
 			m.selection.SyncWithItems(m.state.Items)
@@ -743,6 +751,7 @@ func (m *Model) handleBranchSelectKeys(key string) tea.Cmd {
 		if len(m.state.FilteredBranches) > 0 && m.state.BranchCursor >= 0 && m.state.BranchCursor < len(m.state.FilteredBranches) {
 			m.state.Branch = m.state.FilteredBranches[m.state.BranchCursor].Name
 			m.state.Commit = ""
+			m.state.BranchHeadSHA = ""
 			m.state.SetMode(types.ModeBrowse)
 			return m.refreshView()
 		}
@@ -750,6 +759,7 @@ func (m *Model) handleBranchSelectKeys(key string) tea.Cmd {
 		if typed != "" {
 			m.state.Branch = typed
 			m.state.Commit = ""
+			m.state.BranchHeadSHA = ""
 			m.state.SetMode(types.ModeBrowse)
 			return m.refreshView()
 		}

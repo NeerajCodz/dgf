@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,8 +16,9 @@ import (
 // Messages
 
 type fetchDoneMsg struct {
-	items []types.RepoItem
-	err   error
+	items         []types.RepoItem
+	branchHeadSHA string
+	err           error
 }
 
 type previewDoneMsg struct {
@@ -131,7 +134,15 @@ func (m *Model) fetchRepository(url string) tea.Cmd {
 
 		// Fetch items
 		items, err := github.FetchItemsWithContext(ctx, m.state.Client, parsed.Username, parsed.Repo, ref, parsed.Path)
-		return fetchDoneMsg{items: items, err: err}
+		headSHA := ""
+		branchForHead := parsed.Branch
+		if branchForHead == "" {
+			branchForHead = m.state.Branch
+		}
+		if err == nil && parsed.Commit == "" {
+			headSHA = m.resolveBranchHeadSHA(ctx, parsed.Username, parsed.Repo, branchForHead)
+		}
+		return fetchDoneMsg{items: items, branchHeadSHA: headSHA, err: err}
 	}
 }
 
@@ -171,8 +182,28 @@ func (m *Model) navigateToFolder(path string) tea.Cmd {
 			m.state.DirCache[cacheKey] = items
 		}
 
-		return fetchDoneMsg{items: items, err: err}
+		headSHA := ""
+		if err == nil && m.state.Commit == "" && m.state.BranchHeadSHA == "" && m.state.Branch != "" {
+			headSHA = m.resolveBranchHeadSHA(ctx, m.state.Owner, m.state.Repo, m.state.Branch)
+		}
+		return fetchDoneMsg{items: items, branchHeadSHA: headSHA, err: err}
 	}
+}
+
+func (m *Model) resolveBranchHeadSHA(ctx context.Context, owner, repo, branch string) string {
+	branch = strings.TrimSpace(branch)
+	if branch == "" {
+		return ""
+	}
+	cacheKey := m.state.BranchHeadCacheKey(branch)
+	if cached, ok := m.state.BranchHeadCache[cacheKey]; ok && cached != "" {
+		return cached
+	}
+	commits, err := m.state.Client.FetchCommitsWithContext(ctx, owner, repo, branch, 1)
+	if err != nil || len(commits) == 0 || strings.TrimSpace(commits[0].SHA) == "" {
+		return ""
+	}
+	return commits[0].SHA
 }
 
 // navigateBack goes back to the previous directory

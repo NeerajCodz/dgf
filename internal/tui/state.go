@@ -15,12 +15,13 @@ type AppState struct {
 	PrevMode types.AppMode
 
 	// Repository info
-	Owner  string
-	Repo   string
-	Branch string
-	Commit string
-	Path   string
-	Token  string
+	Owner         string
+	Repo          string
+	Branch        string
+	Commit        string
+	BranchHeadSHA string
+	Path          string
+	Token         string
 
 	// Branch selection
 	AvailableBranches []string
@@ -49,8 +50,9 @@ type AppState struct {
 	// Directory cache to avoid refetching
 	DirCache map[string][]types.RepoItem
 	// Selector caches (session-scoped)
-	CommitCache map[string][]github.CommitInfo
-	BranchCache map[string][]github.BranchInfo
+	CommitCache     map[string][]github.CommitInfo
+	BranchCache     map[string][]github.BranchInfo
+	BranchHeadCache map[string]string
 
 	// Selection
 	SelectedPaths map[string]bool
@@ -113,6 +115,7 @@ func NewAppState() *AppState {
 		DirCache:        make(map[string][]types.RepoItem),
 		CommitCache:     make(map[string][]github.CommitInfo),
 		BranchCache:     make(map[string][]github.BranchInfo),
+		BranchHeadCache: make(map[string]string),
 		Config:          types.DefaultConfig(),
 	}
 }
@@ -274,13 +277,17 @@ func (s *AppState) GetBranchLabel() string {
 
 // GetCommitLabel returns commit label for header.
 func (s *AppState) GetCommitLabel() string {
-	if s.Commit == "" {
+	ref := s.Commit
+	if ref == "" {
+		ref = s.BranchHeadSHA
+	}
+	if ref == "" {
 		return "latest"
 	}
-	if len(s.Commit) > 7 {
-		return s.Commit[:7]
+	if len(ref) > 7 {
+		return ref[:7]
 	}
-	return s.Commit
+	return ref
 }
 
 func (s *AppState) FilterBranches(query string) {
@@ -331,6 +338,10 @@ func (s *AppState) BranchCacheKey() string {
 
 func (s *AppState) CommitCacheKey(query string) string {
 	return s.Owner + "/" + s.Repo + ":" + s.GetRef() + ":" + strings.ToLower(strings.TrimSpace(query))
+}
+
+func (s *AppState) BranchHeadCacheKey(branch string) string {
+	return s.Owner + "/" + s.Repo + ":" + strings.TrimSpace(branch)
 }
 
 func (s *AppState) BeginOperation() context.Context {
