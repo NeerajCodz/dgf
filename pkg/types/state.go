@@ -11,6 +11,8 @@ const (
 	ModeHelp                    // Help overlay
 	ModeDownload                // Download progress
 	ModeSearch                  // Search overlay active
+	ModeCommitInput             // Commit ID input
+	ModeBranchSelect            // Branch selection
 )
 
 // String returns the string representation of the mode
@@ -30,6 +32,10 @@ func (m AppMode) String() string {
 		return "download"
 	case ModeSearch:
 		return "search"
+	case ModeCommitInput:
+		return "commit_input"
+	case ModeBranchSelect:
+		return "branch_select"
 	default:
 		return "unknown"
 	}

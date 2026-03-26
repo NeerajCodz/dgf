@@ -220,3 +220,37 @@ func (c *Client) setHeaders(req *http.Request) {
 		req.Header.Add("Authorization", "token "+c.token)
 	}
 }
+
+// FetchBranches fetches the list of branches for a repository
+func (c *Client) FetchBranches(owner, repo string) ([]string, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/branches", owner, repo)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	c.setHeaders(req)
+
+	resp, err := c.doWithAuthFallback(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to fetch branches: status %d", resp.StatusCode)
+	}
+
+	var branchData []struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&branchData); err != nil {
+		return nil, err
+	}
+
+	branches := make([]string, len(branchData))
+	for i, b := range branchData {
+		branches[i] = b.Name
+	}
+	
+	return branches, nil
+}

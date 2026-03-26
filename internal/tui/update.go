@@ -36,6 +36,11 @@ type downloadDoneMsg struct {
 	err   error
 }
 
+type branchesDoneMsg struct {
+	branches []string
+	err      error
+}
+
 type tickMsg time.Time
 
 // progressMonitorMsg wraps a download progress message from the monitor goroutine
@@ -399,4 +404,15 @@ func isBinary(data []byte) bool {
 		}
 	}
 	return false
+}
+
+// fetchBranches fetches the list of branches for the current repository
+func (m *Model) fetchBranches() tea.Cmd {
+	return func() tea.Msg {
+		branches, err := m.state.Client.FetchBranches(m.state.Owner, m.state.Repo)
+		if err != nil {
+			return branchesDoneMsg{err: err}
+		}
+		return branchesDoneMsg{branches: branches}
+	}
 }

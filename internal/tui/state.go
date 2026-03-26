@@ -18,6 +18,10 @@ type AppState struct {
 	Commit   string
 	Path     string
 	Token    string
+	
+	// Branch selection
+	AvailableBranches []string
+	BranchCursor      int
 
 	// Navigation
 	NavigationStack []types.NavigationEntry

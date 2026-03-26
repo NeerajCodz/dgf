@@ -24,10 +24,11 @@ type Model struct {
 	selection  *selection.Manager
 
 	// UI components
-	urlInput   textinput.Model
+	urlInput    textinput.Model
 	searchInput textinput.Model
-	spinner    spinner.Model
-	viewport   viewport.Model
+	commitInput textinput.Model
+	spinner     spinner.Model
+	viewport    viewport.Model
 
 	// Dimensions
 	width  int
@@ -54,6 +55,11 @@ func NewModel(initialURL, token string) Model {
 	searchInput.Placeholder = "Search files..."
 	searchInput.CharLimit = 64
 	searchInput.Width = 40
+
+	commitInput := textinput.New()
+	commitInput.Placeholder = "Enter commit SHA (or leave empty for latest)"
+	commitInput.CharLimit = 40
+	commitInput.Width = 50
 
 	// Create enhanced spinner with smooth animation
 	sp := spinner.New()
@@ -92,6 +98,7 @@ func NewModel(initialURL, token string) Model {
 		selection:   selection.NewManager(),
 		urlInput:    urlInput,
 		searchInput: searchInput,
+		commitInput: commitInput,
 		spinner:     sp,
 	}
 
@@ -406,6 +413,15 @@ func (m *Model) handleBrowseKeys(key string) tea.Cmd {
 		m.state.ConfirmDownload = false
 		m.state.ConfirmInverseSelection = false
 		return m.refreshView()
+	case "c", "C":
+		// Enter commit ID
+		m.commitInput.SetValue(m.state.Commit)
+		m.commitInput.Focus()
+		m.state.SetMode(types.ModeCommitInput)
+	case "b", "B":
+		// Fetch and show branches
+		m.state.SetMode(types.ModeLoading)
+		return m.fetchBranches()
 	case "?":
 		m.state.SetMode(types.ModeHelp)
 	case "q", "ctrl+c":
