@@ -626,11 +626,13 @@ func (m *Model) handleBrowseKeys(key string) tea.Cmd {
 	case "c", "C":
 		// Open commit selector
 		m.state.Error = ""
+		m.modeSearchInput.SetValue("")
 		m.state.SetMode(types.ModeLoading)
 		return m.fetchCommits()
 	case "b", "B":
 		// Fetch and show branches
 		m.state.Error = ""
+		m.modeSearchInput.SetValue("")
 		m.state.SetMode(types.ModeLoading)
 		return m.fetchBranches()
 	case "?":

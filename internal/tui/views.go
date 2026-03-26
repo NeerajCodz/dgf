@@ -18,14 +18,13 @@ import (
 func (m Model) viewInput() string {
 	var b strings.Builder
 
-	// Polished static figlet-style logo
+	// Stable centered ASCII logo
 	logoLines := []string{
-		"██████╗  ██████╗ ███████╗",
-		"██╔══██╗██╔════╝ ██╔════╝",
-		"██║  ██║██║  ███╗█████╗  ",
-		"██║  ██║██║   ██║██╔══╝  ",
-		"██████╔╝╚██████╔╝██║     ",
-		"╚═════╝  ╚═════╝ ╚═╝     ",
+		" ____   ____  _____",
+		"|  _ \\ / ___||  ___|",
+		"| | | | |  _ | |_   ",
+		"| |_| | |_| ||  _|  ",
+		"|____/ \\____||_|    ",
 		"",
 		"DIRECT GIT FETCH v2.0",
 	}
@@ -38,18 +37,18 @@ func (m Model) viewInput() string {
 
 	// Selected context (repo/branch/commit) on home
 	if m.state.Owner != "" && m.state.Repo != "" {
-		repoLine := fmt.Sprintf("Repo: github.com/%s/%s", m.state.Owner, m.state.Repo)
+		repoLine := fmt.Sprintf("github.com/%s/%s", m.state.Owner, m.state.Repo)
 		branchLabel := m.state.GetBranchLabel()
 		commitLabel := m.state.GetCommitLabel()
 		branchText := "Branch: " + branchLabel
-		commitText := "Commit: " + commitLabel
+		commitText := "SHA: " + commitLabel
 		if branchLabel == "latest" {
 			branchText = lipgloss.NewStyle().Foreground(ColorSubtle).Render(branchText)
 		}
 		if commitLabel == "latest" {
 			commitText = lipgloss.NewStyle().Foreground(ColorSubtle).Render(commitText)
 		}
-		b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Foreground(ColorInfo).Render(repoLine)))
+		b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Foreground(ColorInfo).Bold(true).Render(repoLine)))
 		b.WriteString("\n")
 		b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, branchText+"    "+commitText))
 		b.WriteString("\n\n")
@@ -179,14 +178,14 @@ func (m Model) viewBrowser() string {
 	b.WriteString(separator)
 	b.WriteString("\n")
 
-	repoLine := fmt.Sprintf("Repo: github.com/%s/%s", m.state.Owner, m.state.Repo)
+	repoLine := fmt.Sprintf("github.com/%s/%s", m.state.Owner, m.state.Repo)
 	branchLabel := m.state.GetBranchLabel()
 	commitLabel := m.state.GetCommitLabel()
-	refLine := fmt.Sprintf("Branch: %s    Commit: %s", branchLabel, commitLabel)
+	refLine := fmt.Sprintf("Branch: %s    SHA: %s", branchLabel, commitLabel)
 	if branchLabel == "latest" || commitLabel == "latest" {
 		refLine = lipgloss.NewStyle().Foreground(ColorSubtle).Render(refLine)
 	}
-	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Foreground(ColorInfo).Render(repoLine)))
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Foreground(ColorInfo).Bold(true).Render(repoLine)))
 	b.WriteString("\n")
 	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, refLine))
 	b.WriteString("\n")

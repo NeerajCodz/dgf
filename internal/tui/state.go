@@ -257,7 +257,7 @@ func (s *AppState) GetBreadcrumb() string {
 	if s.Owner == "" || s.Repo == "" {
 		return ""
 	}
-	breadcrumb := s.Owner + "/" + s.Repo
+	breadcrumb := "github.com/" + s.Owner + "/" + s.Repo
 	if s.Path != "" {
 		breadcrumb += "/" + s.Path
 	}
@@ -277,8 +277,8 @@ func (s *AppState) GetCommitLabel() string {
 	if s.Commit == "" {
 		return "latest"
 	}
-	if len(s.Commit) > 8 {
-		return s.Commit[:8]
+	if len(s.Commit) > 7 {
+		return s.Commit[:7]
 	}
 	return s.Commit
 }
