@@ -167,6 +167,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state.SetMode(types.ModeBrowse)
 		m.state.Items = msg.items
 		m.selection.SyncWithItems(m.state.Items)
+		if msg.err == nil {
+			cacheKey := m.state.DirCacheKey(m.state.Path)
+			m.state.DirCache[cacheKey] = msg.items
+		}
 		if msg.err != nil {
 			m.state.SetError(msg.err.Error())
 		} else {
@@ -208,6 +212,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.modeSearchInput.Placeholder = "Search commit hash/message"
 			m.modeSearchInput.Focus()
 			m.state.SetMode(types.ModeCommitInput)
+		}
+
+	case selectorSearchDoneMsg:
+		if msg.err != nil {
+			m.state.SetError(msg.err.Error())
+		} else {
+			m.state.CommitItems = msg.commits
+			m.state.FilterCommits("")
+			m.state.CommitCursor = 0
 		}
 
 	case previewDoneMsg:
@@ -482,6 +495,10 @@ func (m *Model) handleBrowseKeys(key string) tea.Cmd {
 		// Esc or J/left arrow: navigate back to parent
 		m.state.ConfirmDownload = false
 		m.state.ConfirmInverseSelection = false
+		if m.state.Path == "" {
+			m.state.SetMode(types.ModeInput)
+			return nil
+		}
 		return m.navigateBack()
 	case "d", "D", "shift+enter":
 		// D or Shift+Enter: download selected items
@@ -595,7 +612,19 @@ func (m *Model) handleCommitInputKeys(key string) tea.Cmd {
 		if m.state.CommitCursor < len(m.state.FilteredCommits)-1 {
 			m.state.CommitCursor++
 		}
-	case " ", "enter":
+	case "enter":
+		query := strings.TrimSpace(m.modeSearchInput.Value())
+		if query != "" {
+			return m.searchCommits(query)
+		}
+		if len(m.state.FilteredCommits) > 0 && m.state.CommitCursor >= 0 && m.state.CommitCursor < len(m.state.FilteredCommits) {
+			c := m.state.FilteredCommits[m.state.CommitCursor]
+			m.state.Commit = c.SHA
+			m.state.SelectedCommitMsg = c.Message
+		}
+		m.state.SetMode(types.ModeBrowse)
+		return m.refreshView()
+	case " ":
 		if len(m.state.FilteredCommits) > 0 && m.state.CommitCursor >= 0 && m.state.CommitCursor < len(m.state.FilteredCommits) {
 			c := m.state.FilteredCommits[m.state.CommitCursor]
 			m.state.Commit = c.SHA
@@ -607,7 +636,7 @@ func (m *Model) handleCommitInputKeys(key string) tea.Cmd {
 		m.state.SetMode(types.ModeBrowse)
 		return m.refreshView()
 	case "esc":
-		m.state.SetMode(types.ModeBrowse)
+		m.state.SetMode(types.ModeInput)
 	}
 	return nil
 }
@@ -641,7 +670,7 @@ func (m *Model) handleBranchSelectKeys(key string) tea.Cmd {
 			return m.refreshView()
 		}
 	case "esc":
-		m.state.SetMode(types.ModeBrowse)
+		m.state.SetMode(types.ModeInput)
 	}
 	return nil
 }

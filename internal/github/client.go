@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -373,6 +374,73 @@ func (c *Client) FetchCommits(owner, repo, ref string, perPage int) ([]CommitInf
 
 	out := make([]CommitInfo, 0, len(payload))
 	for _, row := range payload {
+		msg := row.Commit.Message
+		if idx := strings.Index(msg, "\n"); idx >= 0 {
+			msg = msg[:idx]
+		}
+		out = append(out, CommitInfo{
+			SHA:     row.SHA,
+			Message: msg,
+			Author:  row.Commit.Author.Name,
+			Date:    row.Commit.Author.Date,
+		})
+	}
+	return out, nil
+}
+
+// SearchCommits searches commits using GitHub Search API scoped to a repo.
+func (c *Client) SearchCommits(owner, repo, query string, perPage int) ([]CommitInfo, error) {
+	if perPage <= 0 {
+		perPage = 10
+	}
+	q := strings.TrimSpace(query)
+	if q == "" {
+		return nil, nil
+	}
+	searchQ := fmt.Sprintf("%s repo:%s/%s", q, owner, repo)
+	api := fmt.Sprintf("https://api.github.com/search/commits?q=%s&per_page=%d", url.QueryEscape(searchQ), perPage)
+	req, err := http.NewRequest("GET", api, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Add("Accept", "application/vnd.github+json")
+	req.Header.Add("Accept", "application/vnd.github.cloak-preview")
+	if c.token != "" {
+		req.Header.Add("Authorization", "token "+c.token)
+	}
+
+	resp, err := c.doWithAuthFallback(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusForbidden {
+		return nil, ErrRateLimited
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to search commits: status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var payload struct {
+		Items []struct {
+			SHA    string `json:"sha"`
+			Commit struct {
+				Message string `json:"message"`
+				Author  struct {
+					Name string    `json:"name"`
+					Date time.Time `json:"date"`
+				} `json:"author"`
+			} `json:"commit"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, err
+	}
+
+	out := make([]CommitInfo, 0, len(payload.Items))
+	for _, row := range payload.Items {
 		msg := row.Commit.Message
 		if idx := strings.Index(msg, "\n"); idx >= 0 {
 			msg = msg[:idx]

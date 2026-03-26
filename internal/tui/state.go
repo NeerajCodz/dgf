@@ -47,6 +47,9 @@ type AppState struct {
 
 	// Directory cache to avoid refetching
 	DirCache map[string][]types.RepoItem
+	// Selector caches (session-scoped)
+	CommitCache map[string][]github.CommitInfo
+	BranchCache map[string][]github.BranchInfo
 
 	// Selection
 	SelectedPaths map[string]bool
@@ -103,6 +106,8 @@ func NewAppState() *AppState {
 		Items:           make([]types.RepoItem, 0),
 		FilteredItems:   make([]types.RepoItem, 0),
 		DirCache:        make(map[string][]types.RepoItem),
+		CommitCache:     make(map[string][]github.CommitInfo),
+		BranchCache:     make(map[string][]github.BranchInfo),
 		Config:          types.DefaultConfig(),
 	}
 }
@@ -309,4 +314,16 @@ func (s *AppState) FilterCommits(query string) {
 	if s.CommitCursor >= len(s.FilteredCommits) {
 		s.CommitCursor = max(0, len(s.FilteredCommits)-1)
 	}
+}
+
+func (s *AppState) DirCacheKey(path string) string {
+	return s.Owner + "/" + s.Repo + ":" + s.GetRef() + ":" + path
+}
+
+func (s *AppState) BranchCacheKey() string {
+	return s.Owner + "/" + s.Repo
+}
+
+func (s *AppState) CommitCacheKey(query string) string {
+	return s.Owner + "/" + s.Repo + ":" + s.GetRef() + ":" + strings.ToLower(strings.TrimSpace(query))
 }

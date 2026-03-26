@@ -48,6 +48,10 @@ type commitsDoneMsg struct {
 }
 
 type autoExitMsg struct{}
+type selectorSearchDoneMsg struct {
+	commits []github.CommitInfo
+	err     error
+}
 
 func autoExit() tea.Cmd {
 	return tea.Tick(2*time.Second, func(_ time.Time) tea.Msg {
@@ -130,7 +134,7 @@ func (m *Model) fetchRepository(url string) tea.Cmd {
 // navigateToFolder navigates into a folder
 func (m *Model) navigateToFolder(path string) tea.Cmd {
 	// Check if we have this directory cached
-	cacheKey := m.state.Owner + "/" + m.state.Repo + ":" + m.state.GetRef() + ":" + path
+	cacheKey := m.state.DirCacheKey(path)
 	if cachedItems, exists := m.state.DirCache[cacheKey]; exists {
 		// Use cached items immediately
 		m.state.Items = cachedItems
@@ -178,6 +182,13 @@ func (m *Model) navigateBack() tea.Cmd {
 				m.state.Path = ""
 			}
 			m.state.Cursor = 0
+			cacheKey := m.state.DirCacheKey(m.state.Path)
+			if cached, ok := m.state.DirCache[cacheKey]; ok {
+				m.state.Items = cached
+				m.selection.SyncWithItems(m.state.Items)
+				m.state.SetMode(types.ModeBrowse)
+				return nil
+			}
 			return m.refreshView()
 		}
 		return nil
@@ -186,11 +197,26 @@ func (m *Model) navigateBack() tea.Cmd {
 	m.state.Path = entry.Path
 	m.state.Cursor = entry.Cursor
 	m.state.ScrollOffset = entry.Scroll
+	cacheKey := m.state.DirCacheKey(m.state.Path)
+	if cached, ok := m.state.DirCache[cacheKey]; ok {
+		m.state.Items = cached
+		m.selection.SyncWithItems(m.state.Items)
+		m.state.SetMode(types.ModeBrowse)
+		return nil
+	}
 	return m.refreshView()
 }
 
 // refreshView reloads the current directory
 func (m *Model) refreshView() tea.Cmd {
+	cacheKey := m.state.DirCacheKey(m.state.Path)
+	if cached, ok := m.state.DirCache[cacheKey]; ok {
+		m.state.Items = cached
+		m.selection.SyncWithItems(m.state.Items)
+		m.state.SetMode(types.ModeBrowse)
+		return nil
+	}
+
 	m.state.SetMode(types.ModeLoading)
 
 	return func() tea.Msg {
@@ -201,6 +227,9 @@ func (m *Model) refreshView() tea.Cmd {
 			m.state.GetRef(),
 			m.state.Path,
 		)
+		if err == nil {
+			m.state.DirCache[cacheKey] = items
+		}
 		return fetchDoneMsg{items: items, err: err}
 	}
 }
@@ -422,6 +451,17 @@ func isBinary(data []byte) bool {
 
 // fetchBranches fetches the list of branches for the current repository
 func (m *Model) fetchBranches() tea.Cmd {
+	cacheKey := m.state.BranchCacheKey()
+	if cached, ok := m.state.BranchCache[cacheKey]; ok && len(cached) > 0 {
+		return func() tea.Msg {
+			branches := make([]string, 0, len(cached))
+			for _, b := range cached {
+				branches = append(branches, b.Name)
+			}
+			return branchesDoneMsg{branches: branches, details: cached}
+		}
+	}
+
 	return func() tea.Msg {
 		branches, err := m.state.Client.FetchBranches(m.state.Owner, m.state.Repo)
 		if err != nil {
@@ -430,15 +470,44 @@ func (m *Model) fetchBranches() tea.Cmd {
 		details, detailErr := m.state.Client.FetchBranchesWithCounts(m.state.Owner, m.state.Repo)
 		if detailErr != nil {
 			details = nil
+		} else {
+			m.state.BranchCache[cacheKey] = details
 		}
 		return branchesDoneMsg{branches: branches, details: details}
 	}
 }
 
 func (m *Model) fetchCommits() tea.Cmd {
+	cacheKey := m.state.CommitCacheKey("")
+	if cached, ok := m.state.CommitCache[cacheKey]; ok && len(cached) > 0 {
+		return func() tea.Msg {
+			return commitsDoneMsg{commits: cached, err: nil}
+		}
+	}
+
 	return func() tea.Msg {
 		ref := m.state.GetRef()
-		commits, err := m.state.Client.FetchCommits(m.state.Owner, m.state.Repo, ref, 100)
+		commits, err := m.state.Client.FetchCommits(m.state.Owner, m.state.Repo, ref, 10)
+		if err == nil {
+			m.state.CommitCache[cacheKey] = commits
+		}
 		return commitsDoneMsg{commits: commits, err: err}
+	}
+}
+
+func (m *Model) searchCommits(query string) tea.Cmd {
+	cacheKey := m.state.CommitCacheKey(query)
+	if cached, ok := m.state.CommitCache[cacheKey]; ok {
+		return func() tea.Msg {
+			return selectorSearchDoneMsg{commits: cached}
+		}
+	}
+
+	return func() tea.Msg {
+		commits, err := m.state.Client.SearchCommits(m.state.Owner, m.state.Repo, query, 25)
+		if err == nil {
+			m.state.CommitCache[cacheKey] = commits
+		}
+		return selectorSearchDoneMsg{commits: commits, err: err}
 	}
 }
