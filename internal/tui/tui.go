@@ -163,7 +163,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.state.SetError(msg.err.Error())
 		} else {
-			m.state.ShowToast(fmt.Sprintf("Loaded %d items", len(msg.items)), types.ToastSuccess)
+			// Keep layout stable by not showing transient loaded-toasts in browse view
+			m.state.Toast = nil
+		}
+
+	case branchesDoneMsg:
+		if msg.err != nil {
+			m.state.SetError(msg.err.Error())
+			m.state.SetMode(types.ModeBrowse)
+		} else {
+			m.state.AvailableBranches = msg.branches
+			m.state.BranchCursor = 0
+			m.state.SetMode(types.ModeBranchSelect)
 		}
 
 	case previewDoneMsg:
@@ -224,6 +235,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Update filtered items
 		m.state.FilteredItems = selection.Filter(m.state.Items, m.searchInput.Value())
 		m.state.SearchQuery = m.searchInput.Value()
+	case types.ModeCommitInput:
+		var cmd tea.Cmd
+		m.commitInput, cmd = m.commitInput.Update(msg)
+		cmds = append(cmds, cmd)
 	}
 
 	return m, tea.Batch(cmds...)
@@ -250,6 +265,10 @@ func (m Model) View() string {
 		content = m.viewHelp()
 	case types.ModeDownload:
 		content = m.viewDownload()
+	case types.ModeCommitInput:
+		content = m.viewCommitInput()
+	case types.ModeBranchSelect:
+		content = m.viewBranchSelect()
 	default:
 		content = m.viewInput()
 	}
@@ -277,6 +296,10 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) tea.Cmd {
 		return m.handlePreviewKeys(key)
 	case types.ModeHelp:
 		return m.handleHelpKeys(key)
+	case types.ModeCommitInput:
+		return m.handleCommitInputKeys(key)
+	case types.ModeBranchSelect:
+		return m.handleBranchSelectKeys(key)
 	}
 
 	return nil
@@ -286,14 +309,37 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) tea.Cmd {
 func (m *Model) handleInputKeys(key string, msg tea.KeyMsg) tea.Cmd {
 	switch key {
 	case "enter":
-		url := strings.TrimSpace(m.urlInput.Value())
-		if url != "" {
-			return m.fetchRepository(url)
+		val := strings.TrimSpace(m.urlInput.Value())
+		if val == "" {
+			return nil
+		}
+		if m.state.TokenEntry {
+			m.state.Token = val
+			m.state.Client.SetToken(val)
+			m.state.Config.GithubToken = val
+			if err := config.Save(m.state.Config); err != nil {
+				m.state.SetError(err.Error())
+			} else {
+				m.state.ShowToast("Token updated", types.ToastSuccess)
+			}
+			m.state.TokenEntry = false
+			m.urlInput.SetValue("")
+			m.urlInput.Placeholder = "Enter GitHub URL (e.g., github.com/user/repo)"
+			return nil
+		}
+		if val != "" {
+			return m.fetchRepository(val)
 		}
 	case "ctrl+c", "q":
 		return tea.Quit
 	case "?":
 		m.state.SetMode(types.ModeHelp)
+	case "esc":
+		if m.state.TokenEntry {
+			m.state.TokenEntry = false
+			m.urlInput.SetValue("")
+			m.urlInput.Placeholder = "Enter GitHub URL (e.g., github.com/user/repo)"
+		}
 	}
 	return nil
 }
@@ -302,6 +348,25 @@ func (m *Model) handleInputKeys(key string, msg tea.KeyMsg) tea.Cmd {
 func (m *Model) handleBrowseKeys(key string) tea.Cmd {
 	items := m.state.GetVisibleItems()
 	itemCount := len(items)
+	errLower := strings.ToLower(m.state.Error)
+	rateLimited := strings.Contains(errLower, "rate limit") || strings.Contains(errLower, "status 403")
+
+	if rateLimited {
+		switch key {
+		case "enter", "t", "T":
+			m.state.TokenEntry = true
+			m.urlInput.SetValue("")
+			m.urlInput.Placeholder = "Enter GitHub token and press Enter"
+			m.state.SetMode(types.ModeInput)
+			return nil
+		case "esc":
+			m.state.ClearError()
+			m.state.SetMode(types.ModeInput)
+			return nil
+		case "ctrl+c", "q":
+			return tea.Quit
+		}
+	}
 
 	switch key {
 	case "up":
@@ -420,6 +485,7 @@ func (m *Model) handleBrowseKeys(key string) tea.Cmd {
 		m.state.SetMode(types.ModeCommitInput)
 	case "b", "B":
 		// Fetch and show branches
+		m.state.Error = ""
 		m.state.SetMode(types.ModeLoading)
 		return m.fetchBranches()
 	case "?":
@@ -450,6 +516,42 @@ func (m *Model) handleSearchKeys(key string) tea.Cmd {
 		m.state.SearchQuery = ""
 		m.state.IsSearching = false
 		m.state.FilteredItems = nil
+		m.state.SetMode(types.ModeBrowse)
+	}
+	return nil
+}
+
+func (m *Model) handleCommitInputKeys(key string) tea.Cmd {
+	switch key {
+	case "enter":
+		commit := strings.TrimSpace(m.commitInput.Value())
+		m.state.Commit = commit
+		m.state.SetMode(types.ModeBrowse)
+		return m.refreshView()
+	case "esc":
+		m.state.SetMode(types.ModeBrowse)
+	}
+	return nil
+}
+
+func (m *Model) handleBranchSelectKeys(key string) tea.Cmd {
+	switch key {
+	case "up", "k":
+		if m.state.BranchCursor > 0 {
+			m.state.BranchCursor--
+		}
+	case "down", "j":
+		if m.state.BranchCursor < len(m.state.AvailableBranches)-1 {
+			m.state.BranchCursor++
+		}
+	case "enter":
+		if len(m.state.AvailableBranches) > 0 && m.state.BranchCursor >= 0 && m.state.BranchCursor < len(m.state.AvailableBranches) {
+			m.state.Branch = m.state.AvailableBranches[m.state.BranchCursor]
+			m.state.Commit = ""
+			m.state.SetMode(types.ModeBrowse)
+			return m.refreshView()
+		}
+	case "esc":
 		m.state.SetMode(types.ModeBrowse)
 	}
 	return nil

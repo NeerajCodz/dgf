@@ -69,6 +69,7 @@ type AppState struct {
 	Width       int
 	Height      int
 	Error       string
+	TokenEntry  bool
 
 	// Config
 	Config types.Config
@@ -235,7 +236,7 @@ func (s *AppState) GetBreadcrumb() string {
 	}
 	breadcrumb := s.Owner + "/" + s.Repo
 	if s.Path != "" {
-		breadcrumb += " : " + s.Path
+		breadcrumb += "/" + s.Path
 	}
 	return breadcrumb
 }

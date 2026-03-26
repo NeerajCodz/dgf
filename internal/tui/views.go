@@ -14,86 +14,67 @@ import (
 	"github.com/NeerajCodz/dgf/pkg/types"
 )
 
-// ASCII art logo
-const logo = `
-    ____  ____________
-   / __ \/ ____/ ____/
-  / / / / / __/ /_    
- / /_/ / /_/ / __/    
-/_____/\____/_/       
-                      
-Direct Git Fetch v2.0
-`
-
 // viewInput renders the URL input screen with better guidance
 func (m Model) viewInput() string {
 	var b strings.Builder
 
-	// Centered logo with enhanced styling
-	logoStyle := lipgloss.NewStyle().
-		Foreground(ColorLogo).
-		Bold(true).
-		Align(lipgloss.Center)
-
-	enhancedLogo := `
-    ____  ____________
-   / __ \/ ____/ ____/
-  / / / / / __/ /_    
- / /_/ / /_/ / __/    
-/_____/\____/_/       
-                      
- v2.0 • Terminal UI
-`
-	
-	b.WriteString(logoStyle.Render(enhancedLogo))
-	b.WriteString("\n\n")
+	// ASCII logo - centered
+	logoLines := []string{
+		"____  ____________",
+		"/ __ \\/ ____/ ____/",
+		"/ / / / / __/ /_",
+		"/ /_/ / /_/ / __/",
+		"/_____/\\____/_/",
+		"",
+		"v2.0 Terminal UI",
+	}
+	logoStyle := lipgloss.NewStyle().Foreground(ColorLogo).Bold(true)
+	for _, line := range logoLines {
+		b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, logoStyle.Render(line)))
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
 
 	// Tagline
-	taglineStyle := lipgloss.NewStyle().
-		Foreground(ColorAccent).
-		Italic(true).
-		Align(lipgloss.Center)
-
-	b.WriteString(taglineStyle.Render("Download files from GitHub repos without full clones"))
+	taglineStyle := lipgloss.NewStyle().Foreground(ColorAccent).Italic(true)
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, taglineStyle.Render("Download files from GitHub repos without full clones")))
 	b.WriteString("\n\n")
 
-	// URL input box with better styling
-	inputBoxStyle := InputFocusedStyle.
-		Width(70).
-		Align(lipgloss.Center)
-
+	// URL input box
+	inputBoxStyle := InputFocusedStyle.Width(70)
 	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, inputBoxStyle.Render(m.urlInput.View())))
 	b.WriteString("\n\n")
 
-	// Enhanced hints section
-	hintTitleStyle := lipgloss.NewStyle().
-		Foreground(ColorSuccess).
-		Bold(true)
-	
-	hintStyle := lipgloss.NewStyle().
-		Foreground(ColorSubtle)
-	
-	exampleStyle := lipgloss.NewStyle().
-		Foreground(ColorInfo)
+	// Examples section (no emojis)
+	hintStyle := lipgloss.NewStyle().Foreground(ColorSubtle)
+	exampleStyle := lipgloss.NewStyle().Foreground(ColorInfo)
 
-	hints := []string{
-		hintTitleStyle.Render("📝 Examples:"),
-		exampleStyle.Render("  • github.com/charmbracelet/bubbletea"),
-		exampleStyle.Render("  • https://github.com/golang/go/tree/master/src"),
-		exampleStyle.Render("  • github.com/user/repo/tree/branch/path"),
+	examples := []string{
+		"Examples:",
+		"  github.com/charmbracelet/bubbletea",
+		"  https://github.com/golang/go/tree/master/src",
+		"  github.com/user/repo/tree/branch/path",
 		"",
-		hintStyle.Render("💡 Tip: Paste any GitHub URL and press Enter"),
+		"Tip: Paste any GitHub URL and press Enter",
 		"",
-		hintTitleStyle.Render("⌨️  Controls:"),
-		hintStyle.Render("  Enter: Browse repository  •  ?: Help  •  q: Quit"),
+		"Controls:",
+		"  Enter: Browse repository  •  ?: Help  •  q: Quit",
 	}
 
-	for _, hint := range hints {
-		b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, hint))
+	for i, line := range examples {
+		var styled string
+		if i == 0 || i == 7 { // "Examples:" and "Controls:"
+			styled = lipgloss.NewStyle().Foreground(ColorSuccess).Bold(true).Render(line)
+		} else if i >= 1 && i <= 3 { // Example URLs
+			styled = exampleStyle.Render(line)
+		} else {
+			styled = hintStyle.Render(line)
+		}
+		b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, styled))
 		b.WriteString("\n")
 	}
 
-	// Show error if present
+	// Show error if present (no emoji)
 	if m.state.Error != "" {
 		b.WriteString("\n")
 		errorBox := lipgloss.NewStyle().
@@ -103,7 +84,7 @@ func (m Model) viewInput() string {
 			Padding(0, 2).
 			Width(70).
 			Align(lipgloss.Center).
-			Render("❌ " + m.state.Error)
+			Render("ERROR: " + m.state.Error)
 		
 		b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, errorBox))
 	}
@@ -135,7 +116,7 @@ func (m Model) viewLoading() string {
 	if m.state.Owner != "" && m.state.Repo != "" {
 		message = fmt.Sprintf("Fetching %s/%s...", m.state.Owner, m.state.Repo)
 		if m.state.Path != "" {
-			message += fmt.Sprintf("\n📂 %s", m.state.Path)
+			message += fmt.Sprintf("\nPath: %s", m.state.Path)
 		}
 	} else {
 		message = "Connecting to GitHub..."
@@ -159,31 +140,30 @@ func (m Model) viewLoading() string {
 func (m Model) viewBrowser() string {
 	var b strings.Builder
 
-	// Centered title
-	titleStyle := lipgloss.NewStyle().
-		Foreground(ColorLogo).
-		Bold(true).
-		Align(lipgloss.Center)
-	
-	title := titleStyle.Width(m.width).Render("Direct Git Fetch v2.0")
-	b.WriteString(title)
+	if m.state.Error != "" {
+		errLower := strings.ToLower(m.state.Error)
+		if strings.Contains(errLower, "rate limit") || strings.Contains(errLower, "status 403") {
+			return m.viewRateLimit()
+		}
+	}
+
+	// Title
+	titleText := "Direct Git Fetch v2.0"
+	titleStyle := lipgloss.NewStyle().Foreground(ColorLogo).Bold(true)
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, titleStyle.Render(titleText)))
 	b.WriteString("\n")
 	
-	// Separator line
+	// Separator line (clean ASCII)
 	separatorStyle := lipgloss.NewStyle().Foreground(ColorBorder)
-	separator := separatorStyle.Render(strings.Repeat("─", m.width))
+	separator := separatorStyle.Render(strings.Repeat("-", max(1, m.width)))
 	b.WriteString(separator)
 	b.WriteString("\n")
 
-	// Breadcrumb path (centered)
+	// Breadcrumb path
 	breadcrumb := m.state.GetBreadcrumb()
 	if breadcrumb != "" {
-		pathStyle := lipgloss.NewStyle().
-			Foreground(ColorBreadcrumb).
-			Align(lipgloss.Center)
-		
-		path := pathStyle.Width(m.width).Render(breadcrumb)
-		b.WriteString(path)
+		pathStyle := lipgloss.NewStyle().Foreground(ColorBreadcrumb)
+		b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, pathStyle.Render(breadcrumb)))
 		b.WriteString("\n")
 		b.WriteString(separator)
 		b.WriteString("\n")
@@ -209,12 +189,9 @@ func (m Model) viewBrowser() string {
 		m.state.ScrollOffset = m.state.Cursor - listHeight + 1
 	}
 
-	// Render table header with clean columns
-	headerStyle := lipgloss.NewStyle().
-		Foreground(ColorForeground).
-		Bold(true)
-	
-	// Column layout: SELECT (6) | NAME (40) | FILE TYPE (15) | SIZE (10)
+	// Table header - exact column widths
+	headerStyle := lipgloss.NewStyle().Foreground(ColorForeground).Bold(true)
+	// SELECT (6) | NAME (40) | FILE TYPE (15) | SIZE (10)
 	tableHeader := fmt.Sprintf("%-6s %-40s %-15s %10s", "SELECT", "NAME", "FILE TYPE", "SIZE")
 	b.WriteString(headerStyle.Render(tableHeader))
 	b.WriteString("\n")
@@ -238,7 +215,7 @@ func (m Model) viewBrowser() string {
 		}
 	}
 
-	// Search overlay with enhanced styling
+	// Search overlay (no emoji)
 	if m.state.Mode == types.ModeSearch {
 		searchBoxStyle := lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
@@ -248,7 +225,7 @@ func (m Model) viewBrowser() string {
 			Padding(0, 1).
 			Width(50)
 
-		searchContent := "🔍 " + m.searchInput.View()
+		searchContent := "Search: " + m.searchInput.View()
 		
 		searchInfo := lipgloss.NewStyle().
 			Foreground(ColorSuccess).
@@ -261,79 +238,104 @@ func (m Model) viewBrowser() string {
 	}
 
 	// Footer status bar
+	b.WriteString(separator)
 	b.WriteString("\n")
 	b.WriteString(m.renderStatusBar(icons))
 
 	return BaseStyle.Render(b.String())
 }
 
-// renderItem renders a single file/folder item with enhanced styling
-func (m Model) renderItem(item types.RepoItem, isCursor bool, icons IconSet) string {
-	// Selection marker
-	selectionMarker := "[ ]"
-	selColor := ColorSubtle
-	if item.Selected {
-		selectionMarker = "[●]"
-		selColor = ColorSelected
+func (m Model) viewRateLimit() string {
+	var b strings.Builder
+	title := lipgloss.NewStyle().Foreground(ColorError).Bold(true).Render("GitHub API Rate Limit Reached")
+	msg := lipgloss.NewStyle().Foreground(ColorForeground).Render("Press Enter or T to add/update token. Esc or Ctrl+C to cancel.")
+
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, title))
+	b.WriteString("\n\n")
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, msg))
+	b.WriteString("\n\n")
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Foreground(ColorSubtle).Render(m.state.Error)))
+
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, b.String())
+}
+
+func (m Model) viewCommitInput() string {
+	var b strings.Builder
+	title := lipgloss.NewStyle().Foreground(ColorAccent).Bold(true).Render("Select Commit")
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, title))
+	b.WriteString("\n")
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Foreground(ColorSubtle).Render("Enter commit SHA (empty = current branch head)")))
+	b.WriteString("\n\n")
+	box := InputFocusedStyle.Width(60).Render(m.commitInput.View())
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, box))
+	b.WriteString("\n\n")
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Foreground(ColorSubtle).Render("Enter: apply  Esc: cancel")))
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, b.String())
+}
+
+func (m Model) viewBranchSelect() string {
+	var b strings.Builder
+	title := lipgloss.NewStyle().Foreground(ColorAccent).Bold(true).Render("Select Branch")
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, title))
+	b.WriteString("\n\n")
+
+	maxRows := m.height - 8
+	if maxRows < 5 {
+		maxRows = 5
+	}
+	start := 0
+	if m.state.BranchCursor >= maxRows {
+		start = m.state.BranchCursor - maxRows + 1
+	}
+	end := start + maxRows
+	if end > len(m.state.AvailableBranches) {
+		end = len(m.state.AvailableBranches)
 	}
 
-	// Get file type and icon
-	fileType, fileIcon := GetFileTypeAndIcon(item.Name, item.IsDir())
-	
-	// Name styling
-	nameColor := ColorFile
-	if item.IsDir() {
-		nameColor = ColorFolder
+	for i := start; i < end; i++ {
+		branch := m.state.AvailableBranches[i]
+		line := "  " + branch
+		if i == m.state.BranchCursor {
+			line = CursorStyle.Width(60).Render("> " + branch)
+		}
+		b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, line))
+		b.WriteString("\n")
 	}
+
+	b.WriteString("\n")
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Foreground(ColorSubtle).Render("Enter: select  Esc: cancel  ↑↓/jk: move")))
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, b.String())
+}
+
+// renderItem renders a single file/folder item with enhanced styling
+func (m Model) renderItem(item types.RepoItem, isCursor bool, icons IconSet) string {
+	selectionMarker := "[ ]"
+	if item.Selected {
+		selectionMarker = "[●]"
+	}
+
+	fileType, fileIcon := GetFileTypeAndIcon(item.Name, item.IsDir())
 	if item.IsLFS {
 		fileIcon = icons.LFS
 		fileType = "lfs"
-		nameColor = ColorLFS
 	}
 
-	// Format name with icon (40 chars total including icon)
-	displayName := fileIcon + " " + item.Name
-	nameLimit := 38
-	if len(displayName) > nameLimit {
-		// Account for emoji width
-		displayName = displayName[:nameLimit-3] + "..."
-	}
+	displayName := truncateDisplay(fileIcon+" "+item.Name, 40)
+	fileType = truncateDisplay(fileType, 15)
 
-	// Size display
-	var sizeStr string
-	sizeColor := ColorSubtle
+	sizeStr := "—"
 	if item.IsFile() {
 		sizeStr = utils.FormatBytes(item.Size)
-		if item.Size > 10*1024*1024 { // > 10MB
-			sizeColor = ColorWarning
-		}
-		if item.Size > 50*1024*1024 { // > 50MB
-			sizeColor = ColorError
-		}
-	} else {
-		sizeStr = "—"
 	}
 
-	// Truncate file type if needed
-	if len(fileType) > 13 {
-		fileType = fileType[:13]
-	}
-
-	// Build line with proper spacing
-	// SELECT (6) | NAME (40) | FILE TYPE (15) | SIZE (10)
-	selPart := lipgloss.NewStyle().Foreground(selColor).Bold(item.Selected).Render(selectionMarker)
-	namePart := lipgloss.NewStyle().Foreground(nameColor).Bold(item.IsDir()).Render(displayName)
-	typePart := fileType
-	sizePart := lipgloss.NewStyle().Foreground(sizeColor).Render(sizeStr)
-	
-	// Pad to exact widths
-	line := fmt.Sprintf("%-6s %-40s %-15s %10s", selPart, namePart, typePart, sizePart)
-
-	// Apply cursor highlighting
+	selectionCell := padRightDisplay(selectionMarker, 6)
+	nameCell := padRightDisplay(displayName, 40)
+	typeCell := padRightDisplay(fileType, 15)
+	sizeCell := padLeftDisplay(sizeStr, 10)
+	line := selectionCell + " " + nameCell + " " + typeCell + " " + sizeCell
 	if isCursor {
 		return CursorStyle.Width(m.width).Render(line)
 	}
-
 	return line
 }
 
@@ -395,72 +397,42 @@ func (m Model) highlightMatches(text string, baseStyle lipgloss.Style, isCursor 
 
 // renderStatusBar renders the enhanced bottom status bar
 func (m Model) renderStatusBar(_ IconSet) string {
-	// Build status bar sections
-	var left, center, right []string
+	var left, right string
 
-	// Left: Selection info
+	// Left: Selection info and position
 	if m.selection.HasSelection() {
 		count := m.selection.Count()
 		size := utils.FormatBytes(m.selection.TotalSize())
-		left = append(left, StatusValueStyle.Render(fmt.Sprintf("%d", count))+" selected "+StatusValueStyle.Render(size))
+		left = StatusValueStyle.Render(fmt.Sprintf("%d selected  %s", count, size))
 	} else {
-		left = append(left, StatusBarStyle.Foreground(ColorSubtle).Render("No selection"))
+		left = StatusBarStyle.Foreground(ColorSubtle).Render("No selection")
 	}
 
-	// Center: Position and context
+	// Add position
 	items := m.state.GetVisibleItems()
 	if len(items) > 0 {
-		center = append(center, StatusKeyStyle.Render(fmt.Sprintf("%d/%d", m.state.Cursor+1, len(items))))
-		if m.state.Path != "" {
-			center = append(center, StatusBarStyle.Foreground(ColorSubtle).Render(fmt.Sprintf("• %d items", len(items))))
-		} else {
-			center = append(center, StatusBarStyle.Foreground(ColorSubtle).Render(fmt.Sprintf("• %d items • root", len(items))))
-		}
-	}
-	
-	// Add download directory hint
-	if m.state.DownloadPath != "" && m.state.DownloadPath != "." {
-		center = append(center, StatusBarStyle.Foreground(ColorSubtle).Render("• "+m.state.DownloadPath))
+		posInfo := StatusValueStyle.Render(fmt.Sprintf("%d/%d", m.state.Cursor+1, len(items)))
+		left += "  " + posInfo
 	}
 
-	// Right: Key hints (essential only - user can press ? for full help)
+	// Right: Essential key hints
 	hints := []string{
 		StatusKeyStyle.Render("D") + ":download",
 		StatusKeyStyle.Render("⏎") + ":open",
 		StatusKeyStyle.Render("Esc") + ":back",
 		StatusKeyStyle.Render("?") + ":help",
 	}
-	right = append(right, strings.Join(hints, " "))
-
-	// Build full status bar
-	leftStr := strings.Join(left, " │ ")
-	centerStr := strings.Join(center, " ")
-	rightStr := strings.Join(right, " ")
+	right = strings.Join(hints, "  ")
 
 	// Calculate spacing
-	leftWidth := lipgloss.Width(leftStr)
-	centerWidth := lipgloss.Width(centerStr)
-	rightWidth := lipgloss.Width(rightStr)
-	
-	totalContentWidth := leftWidth + centerWidth + rightWidth
-	if totalContentWidth >= m.width-4 {
-		// Too wide, simplify
-		return StatusBarStyle.Width(m.width).Render(leftStr + " " + rightStr)
-	}
-	
-	// Calculate center position
-	centerStart := (m.width - centerWidth) / 2
-	leftSpace := centerStart - leftWidth
-	rightSpace := m.width - centerStart - centerWidth - rightWidth
-	
-	if leftSpace < 2 {
-		leftSpace = 2
-	}
-	if rightSpace < 2 {
-		rightSpace = 2
+	leftWidth := lipgloss.Width(stripANSI(left))
+	rightWidth := lipgloss.Width(stripANSI(right))
+	spacing := m.width - leftWidth - rightWidth - 2
+	if spacing < 2 {
+		spacing = 2
 	}
 
-	statusLine := leftStr + strings.Repeat(" ", leftSpace) + centerStr + strings.Repeat(" ", rightSpace) + rightStr
+	statusLine := left + strings.Repeat(" ", spacing) + right
 	
 	return StatusBarStyle.Width(m.width).Render(statusLine)
 }
@@ -483,6 +455,41 @@ func stripANSI(s string) string {
 		b.WriteByte(ch)
 	}
 	return b.String()
+}
+
+func truncateDisplay(s string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return ""
+	}
+	if lipgloss.Width(s) <= maxWidth {
+		return s
+	}
+	runes := []rune(s)
+	out := make([]rune, 0, len(runes))
+	for _, r := range runes {
+		next := string(append(out, r))
+		if lipgloss.Width(next)+3 > maxWidth {
+			break
+		}
+		out = append(out, r)
+	}
+	return string(out) + "..."
+}
+
+func padRightDisplay(s string, width int) string {
+	w := lipgloss.Width(s)
+	if w >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-w)
+}
+
+func padLeftDisplay(s string, width int) string {
+	w := lipgloss.Width(s)
+	if w >= width {
+		return s
+	}
+	return strings.Repeat(" ", width-w) + s
 }
 
 func max(a, b int) int {
