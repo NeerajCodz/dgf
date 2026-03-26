@@ -164,22 +164,41 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 
 	case fetchDoneMsg:
-		m.state.SetMode(types.ModeBrowse)
-		m.state.Items = msg.items
-		m.selection.SyncWithItems(m.state.Items)
+		m.state.CancelOperation()
 		if msg.err == nil {
+			m.state.SetMode(types.ModeBrowse)
+			m.state.Items = msg.items
+			m.selection.SyncWithItems(m.state.Items)
 			cacheKey := m.state.DirCacheKey(m.state.Path)
 			m.state.DirCache[cacheKey] = msg.items
-		}
-		if msg.err != nil {
-			m.state.SetError(msg.err.Error())
-		} else {
 			// Keep layout stable by not showing transient loaded-toasts in browse view
 			m.state.Toast = nil
+		} else {
+			if msg.err.Error() == "context canceled" {
+				if len(m.state.Items) > 0 || (m.state.Owner != "" && m.state.Repo != "") {
+					m.state.SetMode(types.ModeBrowse)
+				} else {
+					m.state.SetMode(types.ModeInput)
+				}
+				m.state.ShowToast("Fetch canceled", types.ToastWarning)
+				break
+			}
+			m.state.SetError(msg.err.Error())
+			if len(m.state.Items) > 0 || (m.state.Owner != "" && m.state.Repo != "") {
+				m.state.SetMode(types.ModeBrowse)
+			} else {
+				m.state.SetMode(types.ModeInput)
+			}
 		}
 
 	case branchesDoneMsg:
+		m.state.CancelOperation()
 		if msg.err != nil {
+			if msg.err.Error() == "context canceled" {
+				m.state.SetMode(types.ModeBrowse)
+				m.state.ShowToast("Branch fetch canceled", types.ToastWarning)
+				break
+			}
 			m.state.SetError(msg.err.Error())
 			m.state.SetMode(types.ModeBrowse)
 		} else {
@@ -201,7 +220,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case commitsDoneMsg:
+		m.state.CancelOperation()
 		if msg.err != nil {
+			if msg.err.Error() == "context canceled" {
+				m.state.SetMode(types.ModeBrowse)
+				m.state.ShowToast("Commit fetch canceled", types.ToastWarning)
+				break
+			}
 			m.state.SetError(msg.err.Error())
 			m.state.SetMode(types.ModeBrowse)
 		} else {
@@ -215,15 +240,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case selectorSearchDoneMsg:
+		m.state.CancelOperation()
+		m.state.SetMode(types.ModeCommitInput)
 		if msg.err != nil {
+			if msg.err.Error() == "context canceled" {
+				m.state.ShowToast("Search canceled", types.ToastWarning)
+				break
+			}
 			m.state.SetError(msg.err.Error())
 		} else {
 			m.state.CommitItems = msg.commits
 			m.state.FilterCommits("")
 			m.state.CommitCursor = 0
+			if len(msg.commits) == 0 {
+				m.state.ShowToast("No commits found for search query", types.ToastWarning)
+			}
 		}
 
 	case previewDoneMsg:
+		m.state.CancelOperation()
 		m.state.PreviewLoading = false
 		if msg.err != nil {
 			m.state.SetError(msg.err.Error())
@@ -252,9 +287,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state.DownloadTotal = msg.total
 
 	case downloadDoneMsg:
+		m.state.CancelOperation()
 		m.state.IsDownloading = false
 		m.downloadProgressChan = nil // Clear the channel
 		if msg.err != nil {
+			if msg.err.Error() == "context canceled" {
+				m.state.SetMode(types.ModeBrowse)
+				m.state.ShowToast("Download canceled", types.ToastWarning)
+				break
+			}
 			m.state.SetMode(types.ModeBrowse)
 			m.state.SetError(msg.err.Error())
 		} else {
@@ -349,6 +390,8 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) tea.Cmd {
 	switch m.state.Mode {
 	case types.ModeInput:
 		return m.handleInputKeys(key, msg)
+	case types.ModeLoading:
+		return m.handleLoadingKeys(key)
 	case types.ModeBrowse:
 		return m.handleBrowseKeys(key)
 	case types.ModeSearch:
@@ -361,14 +404,35 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) tea.Cmd {
 		return m.handleCommitInputKeys(key)
 	case types.ModeBranchSelect:
 		return m.handleBranchSelectKeys(key)
+	case types.ModeDownload:
+		return m.handleDownloadKeys(key)
 	}
 
+	return nil
+}
+
+func (m *Model) handleLoadingKeys(key string) tea.Cmd {
+	switch key {
+	case "esc":
+		m.state.CancelOperation()
+		if m.state.Owner != "" && m.state.Repo != "" {
+			m.state.SetMode(types.ModeBrowse)
+		} else {
+			m.state.SetMode(types.ModeInput)
+		}
+		m.state.ShowToast("Fetch canceled", types.ToastWarning)
+	case "ctrl+c":
+		m.state.CancelOperation()
+		return tea.Quit
+	}
 	return nil
 }
 
 // handleInputKeys handles keys in input mode
 func (m *Model) handleInputKeys(key string, msg tea.KeyMsg) tea.Cmd {
 	switch key {
+	case "ctrl+c":
+		return tea.Quit
 	case "enter":
 		val := strings.TrimSpace(m.urlInput.Value())
 		if val == "" {
@@ -391,17 +455,21 @@ func (m *Model) handleInputKeys(key string, msg tea.KeyMsg) tea.Cmd {
 		if val != "" {
 			return m.fetchRepository(val)
 		}
-	case "ctrl+c", "q":
-		return tea.Quit
 	case "?":
 		m.state.SetMode(types.ModeHelp)
 	case "b", "B":
+		if msg.Type == tea.KeyRunes {
+			return nil
+		}
 		if m.state.Owner != "" && m.state.Repo != "" {
 			m.state.Error = ""
 			m.state.SetMode(types.ModeLoading)
 			return m.fetchBranches()
 		}
 	case "c", "C":
+		if msg.Type == tea.KeyRunes {
+			return nil
+		}
 		if m.state.Owner != "" && m.state.Repo != "" {
 			m.state.Error = ""
 			m.state.SetMode(types.ModeLoading)
@@ -436,7 +504,7 @@ func (m *Model) handleBrowseKeys(key string) tea.Cmd {
 			m.state.ClearError()
 			m.state.SetMode(types.ModeInput)
 			return nil
-		case "ctrl+c", "q":
+		case "ctrl+c":
 			return tea.Quit
 		}
 	}
@@ -567,7 +635,7 @@ func (m *Model) handleBrowseKeys(key string) tea.Cmd {
 		return m.fetchBranches()
 	case "?":
 		m.state.SetMode(types.ModeHelp)
-	case "q", "ctrl+c":
+	case "ctrl+c":
 		return tea.Quit
 	}
 
@@ -579,6 +647,19 @@ func (m *Model) handleBrowseKeys(key string) tea.Cmd {
 		m.state.Cursor = itemCount - 1
 	}
 
+	return nil
+}
+
+func (m *Model) handleDownloadKeys(key string) tea.Cmd {
+	switch key {
+	case "esc":
+		m.state.CancelOperation()
+		m.state.SetMode(types.ModeBrowse)
+		m.state.ShowToast("Canceling download...", types.ToastWarning)
+	case "ctrl+c":
+		m.state.CancelOperation()
+		return tea.Quit
+	}
 	return nil
 }
 
@@ -615,6 +696,7 @@ func (m *Model) handleCommitInputKeys(key string) tea.Cmd {
 	case "enter":
 		query := strings.TrimSpace(m.modeSearchInput.Value())
 		if query != "" {
+			m.state.SetMode(types.ModeLoading)
 			return m.searchCommits(query)
 		}
 		if len(m.state.FilteredCommits) > 0 && m.state.CommitCursor >= 0 && m.state.CommitCursor < len(m.state.FilteredCommits) {
@@ -678,7 +760,7 @@ func (m *Model) handleBranchSelectKeys(key string) tea.Cmd {
 // handlePreviewKeys handles keys in preview mode
 func (m *Model) handlePreviewKeys(key string) tea.Cmd {
 	switch key {
-	case "esc", "q", "p":
+	case "esc", "p":
 		m.state.SetMode(types.ModeBrowse)
 	case "up", "k":
 		m.state.PreviewScroll--
@@ -694,7 +776,7 @@ func (m *Model) handlePreviewKeys(key string) tea.Cmd {
 // handleHelpKeys handles keys in help mode
 func (m *Model) handleHelpKeys(key string) tea.Cmd {
 	switch key {
-	case "esc", "q", "?":
+	case "esc", "?":
 		m.state.GoBack()
 	}
 	return nil

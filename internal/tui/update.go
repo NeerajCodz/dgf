@@ -89,9 +89,13 @@ func monitorDownloadProgress(progressChan <-chan downloadProgressMsg) tea.Cmd {
 
 // fetchRepository fetches repository contents from GitHub
 func (m *Model) fetchRepository(url string) tea.Cmd {
+	ctx := m.state.BeginOperation()
 	m.state.SetMode(types.ModeLoading)
 
 	return func() tea.Msg {
+		if ctx.Err() != nil {
+			return fetchDoneMsg{err: ctx.Err()}
+		}
 		// Parse URL
 		platform := types.Platform{
 			Name: "GitHub",
@@ -115,7 +119,7 @@ func (m *Model) fetchRepository(url string) tea.Cmd {
 		// Get default branch if needed
 		ref := parsed.Branch
 		if ref == "" && parsed.Commit == "" {
-			defaultBranch, err := m.state.Client.FetchDefaultBranch(parsed.Username, parsed.Repo)
+			defaultBranch, err := m.state.Client.FetchDefaultBranchWithContext(ctx, parsed.Username, parsed.Repo)
 			if err != nil {
 				return fetchDoneMsg{err: err}
 			}
@@ -126,7 +130,7 @@ func (m *Model) fetchRepository(url string) tea.Cmd {
 		}
 
 		// Fetch items
-		items, err := github.FetchItems(m.state.Client, parsed.Username, parsed.Repo, ref, parsed.Path)
+		items, err := github.FetchItemsWithContext(ctx, m.state.Client, parsed.Username, parsed.Repo, ref, parsed.Path)
 		return fetchDoneMsg{items: items, err: err}
 	}
 }
@@ -147,12 +151,14 @@ func (m *Model) navigateToFolder(path string) tea.Cmd {
 	}
 
 	// Not cached, fetch from API
+	ctx := m.state.BeginOperation()
 	m.state.SetMode(types.ModeLoading)
 	m.state.Path = path
 	m.state.Cursor = 0
 
 	return func() tea.Msg {
-		items, err := github.FetchItems(
+		items, err := github.FetchItemsWithContext(
+			ctx,
 			m.state.Client,
 			m.state.Owner,
 			m.state.Repo,
@@ -217,10 +223,12 @@ func (m *Model) refreshView() tea.Cmd {
 		return nil
 	}
 
+	ctx := m.state.BeginOperation()
 	m.state.SetMode(types.ModeLoading)
 
 	return func() tea.Msg {
-		items, err := github.FetchItems(
+		items, err := github.FetchItemsWithContext(
+			ctx,
 			m.state.Client,
 			m.state.Owner,
 			m.state.Repo,
@@ -236,6 +244,7 @@ func (m *Model) refreshView() tea.Cmd {
 
 // previewFile fetches file content for preview
 func (m *Model) previewFile(item *types.RepoItem) tea.Cmd {
+	ctx := m.state.BeginOperation()
 	m.state.PreviewLoading = true
 
 	return func() tea.Msg {
@@ -251,7 +260,7 @@ func (m *Model) previewFile(item *types.RepoItem) tea.Cmd {
 			}
 		}
 
-		content, err := m.state.Client.FetchRawFile(item.DownloadURL)
+		content, err := m.state.Client.FetchRawFileWithContext(ctx, item.DownloadURL)
 		if err != nil {
 			return previewDoneMsg{err: err, path: item.Path}
 		}
@@ -270,6 +279,7 @@ func (m *Model) previewFile(item *types.RepoItem) tea.Cmd {
 
 // startDownload begins downloading selected items
 func (m *Model) startDownload() tea.Cmd {
+	ctx := m.state.BeginOperation()
 	m.state.SetMode(types.ModeDownload)
 	m.state.IsDownloading = true
 	m.state.DownloadDone = 0
@@ -317,7 +327,7 @@ func (m *Model) startDownload() tea.Cmd {
 						structure.FilesSize = append(structure.FilesSize, int(item.Size))
 					} else if item.IsDir() {
 						// Fetch folder contents recursively
-						folderStructure, err := github.FetchFolderRecursive(client, owner, repo, ref, item.Path)
+						folderStructure, err := github.FetchFolderRecursiveWithContext(ctx, client, owner, repo, ref, item.Path)
 						if err != nil {
 							// Log warning but continue - folder may be empty or inaccessible
 							continue
@@ -347,6 +357,7 @@ func (m *Model) startDownload() tea.Cmd {
 		// Start download in background goroutine
 		go func() {
 			err := github.Download(structure, github.DownloadOptions{
+				Context:      ctx,
 				OutputDir:    downloadPath,
 				Token:        token,
 				Workers:      workers,
@@ -462,12 +473,13 @@ func (m *Model) fetchBranches() tea.Cmd {
 		}
 	}
 
+	ctx := m.state.BeginOperation()
 	return func() tea.Msg {
-		branches, err := m.state.Client.FetchBranches(m.state.Owner, m.state.Repo)
+		branches, err := m.state.Client.FetchBranchesWithContext(ctx, m.state.Owner, m.state.Repo)
 		if err != nil {
 			return branchesDoneMsg{err: err}
 		}
-		details, detailErr := m.state.Client.FetchBranchesWithCounts(m.state.Owner, m.state.Repo)
+		details, detailErr := m.state.Client.FetchBranchesWithCountsContext(ctx, m.state.Owner, m.state.Repo)
 		if detailErr != nil {
 			details = nil
 		} else {
@@ -485,9 +497,10 @@ func (m *Model) fetchCommits() tea.Cmd {
 		}
 	}
 
+	ctx := m.state.BeginOperation()
 	return func() tea.Msg {
 		ref := m.state.GetRef()
-		commits, err := m.state.Client.FetchCommits(m.state.Owner, m.state.Repo, ref, 10)
+		commits, err := m.state.Client.FetchCommitsWithContext(ctx, m.state.Owner, m.state.Repo, ref, 10)
 		if err == nil {
 			m.state.CommitCache[cacheKey] = commits
 		}
@@ -503,8 +516,9 @@ func (m *Model) searchCommits(query string) tea.Cmd {
 		}
 	}
 
+	ctx := m.state.BeginOperation()
 	return func() tea.Msg {
-		commits, err := m.state.Client.SearchCommits(m.state.Owner, m.state.Repo, query, 25)
+		commits, err := m.state.Client.SearchCommitsWithContext(ctx, m.state.Owner, m.state.Repo, query, 25)
 		if err == nil {
 			m.state.CommitCache[cacheKey] = commits
 		}

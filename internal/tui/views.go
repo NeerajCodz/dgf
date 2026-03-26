@@ -27,7 +27,7 @@ func (m Model) viewInput() string {
 		"██████╔╝╚██████╔╝██║     ",
 		"╚═════╝  ╚═════╝ ╚═╝     ",
 		"",
-		"Direct Git Fetch v2.0",
+		"DIRECT GIT FETCH v2.0",
 	}
 	logoStyle := lipgloss.NewStyle().Foreground(ColorLogo).Bold(true)
 	for _, line := range logoLines {
@@ -78,7 +78,7 @@ func (m Model) viewInput() string {
 		"Tip: Paste any GitHub URL and press Enter",
 		"",
 		"Controls:",
-		"  Enter: Browse  •  B: Branch selector  •  C: Commit selector  •  ?: Help  •  q: Quit",
+		"  Enter: Browse  •  B: Branch selector  •  C: Commit selector  •  ?: Help  •  Ctrl+C: Quit",
 	}
 
 	for i, line := range examples {
@@ -151,7 +151,7 @@ func (m Model) viewLoading() string {
 	tipStyle := lipgloss.NewStyle().
 		Foreground(ColorSubtle).
 		Italic(true)
-	b.WriteString(tipStyle.Render("Tip: You can select multiple files before downloading"))
+	b.WriteString(tipStyle.Render("Esc: cancel current fetch  •  Ctrl+C: quit"))
 
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, b.String())
 }
@@ -168,7 +168,7 @@ func (m Model) viewBrowser() string {
 	}
 
 	// Title
-	titleText := "Direct Git Fetch v2.0"
+	titleText := "DIRECT GIT FETCH v2.0"
 	titleStyle := lipgloss.NewStyle().Foreground(ColorLogo).Bold(true)
 	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, titleStyle.Render(titleText)))
 	b.WriteString("\n")
@@ -334,7 +334,7 @@ func (m Model) viewCommitInput() string {
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
-	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Foreground(ColorSubtle).Render("↑↓/jk move  Tab autofill  Space/Enter select  Esc cancel")))
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Foreground(ColorSubtle).Render("↑↓/jk move  Tab autofill  Space select  Enter search/select  Esc home")))
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, b.String())
 }
 
@@ -378,7 +378,7 @@ func (m Model) viewBranchSelect() string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Foreground(ColorSubtle).Render("↑↓/jk move  Tab autofill  Space/Enter select  Esc cancel")))
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Foreground(ColorSubtle).Render("↑↓/jk move  Tab autofill  Space/Enter select  Esc home")))
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, b.String())
 }
 
@@ -786,7 +786,7 @@ func (m Model) viewHelp() string {
 			bindings: []struct{ key, desc string }{
 				{"?", "Toggle this help screen"},
 				{"Esc", "Cancel/Close/Back"},
-				{"q / Ctrl+C", "Quit application"},
+				{"Ctrl+C", "Quit application"},
 			},
 		},
 	}
@@ -913,6 +913,12 @@ func (m Model) viewDownload() string {
 		b.WriteString(statusStyle.Render("Preparing download..."))
 		b.WriteString("\n")
 	}
+
+	b.WriteString("\n")
+	cancelHint := lipgloss.NewStyle().
+		Foreground(ColorSubtle).
+		Render("Esc: cancel download and return  |  Ctrl+C: quit")
+	b.WriteString(cancelHint)
 
 	content := boxStyle.Render(b.String())
 

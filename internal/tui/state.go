@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"strings"
 
 	"github.com/NeerajCodz/dgf/internal/github"
@@ -95,6 +96,10 @@ type AppState struct {
 
 	// AutoFetch triggers automatic repository fetch on startup
 	AutoFetch bool
+
+	// Cancellable in-flight operation context (loading/download/search)
+	opCtx    context.Context
+	opCancel context.CancelFunc
 }
 
 // NewAppState creates a new application state with defaults
@@ -326,4 +331,24 @@ func (s *AppState) BranchCacheKey() string {
 
 func (s *AppState) CommitCacheKey(query string) string {
 	return s.Owner + "/" + s.Repo + ":" + s.GetRef() + ":" + strings.ToLower(strings.TrimSpace(query))
+}
+
+func (s *AppState) BeginOperation() context.Context {
+	s.CancelOperation()
+	ctx, cancel := context.WithCancel(context.Background())
+	s.opCtx = ctx
+	s.opCancel = cancel
+	return ctx
+}
+
+func (s *AppState) OperationContext() context.Context {
+	return s.opCtx
+}
+
+func (s *AppState) CancelOperation() {
+	if s.opCancel != nil {
+		s.opCancel()
+	}
+	s.opCtx = nil
+	s.opCancel = nil
 }

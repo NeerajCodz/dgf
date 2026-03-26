@@ -22,12 +22,12 @@ type KeyMap struct {
 	Unselect  key.Binding
 
 	// Actions
-	Enter     key.Binding
-	Back      key.Binding
-	Download  key.Binding
-	Preview   key.Binding
-	Search    key.Binding
-	Refresh   key.Binding
+	Enter       key.Binding
+	Back        key.Binding
+	Download    key.Binding
+	Preview     key.Binding
+	Search      key.Binding
+	Refresh     key.Binding
 	ToggleIcons key.Binding
 
 	// General
@@ -123,8 +123,8 @@ func DefaultKeyMap() KeyMap {
 			key.WithHelp("?/h", "help"),
 		),
 		Quit: key.NewBinding(
-			key.WithKeys("q", "ctrl+c"),
-			key.WithHelp("q", "quit"),
+			key.WithKeys("ctrl+c"),
+			key.WithHelp("Ctrl+C", "quit"),
 		),
 		Escape: key.NewBinding(
 			key.WithKeys("esc"),

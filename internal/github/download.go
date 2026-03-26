@@ -1,6 +1,7 @@
 package github
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 
 // DownloadOptions configures download behavior
 type DownloadOptions struct {
+	Context      context.Context
 	OutputDir    string
 	Token        string
 	Workers      int
@@ -36,6 +38,9 @@ func Download(structure types.RepositoryStructure, opts DownloadOptions) error {
 	}
 	if opts.Workers <= 0 {
 		opts.Workers = 5
+	}
+	if opts.Context == nil {
+		opts.Context = context.Background()
 	}
 
 	// Ensure output directory exists
@@ -81,6 +86,9 @@ func Download(structure types.RepositoryStructure, opts DownloadOptions) error {
 			client := &http.Client{}
 
 			for i := range jobs {
+				if opts.Context.Err() != nil {
+					return
+				}
 				downloadURL := structure.DownloadURLs[i]
 				filePath := filepath.Join(opts.OutputDir, structure.FilesRequest[i])
 
@@ -93,6 +101,7 @@ func Download(structure types.RepositoryStructure, opts DownloadOptions) error {
 				for attempt := 0; attempt < maxRetries; attempt++ {
 					if downloadURL != "" {
 						err = downloadFileWithOptions(client, DownloadFileOptions{
+							Context:      opts.Context,
 							URL:          downloadURL,
 							DestPath:     filePath,
 							Token:        opts.Token,
@@ -134,6 +143,9 @@ func Download(structure types.RepositoryStructure, opts DownloadOptions) error {
 
 	if len(errors) > 0 {
 		return fmt.Errorf("%d files failed to download", len(errors))
+	}
+	if opts.Context.Err() != nil {
+		return opts.Context.Err()
 	}
 	return nil
 }
@@ -191,17 +203,19 @@ func DownloadWithProgress(structure types.RepositoryStructure, token, outputDir 
 // downloadFile downloads a single file
 // DownloadFileOptions configures individual file download
 type DownloadFileOptions struct {
-	URL           string
-	DestPath      string
-	Token         string
-	Owner         string
-	Repo          string
-	CheckLFS      bool
-	GitHubClient  *Client
+	Context      context.Context
+	URL          string
+	DestPath     string
+	Token        string
+	Owner        string
+	Repo         string
+	CheckLFS     bool
+	GitHubClient *Client
 }
 
 func downloadFile(client *http.Client, url, destPath, token string) error {
 	return downloadFileWithOptions(client, DownloadFileOptions{
+		Context:  context.Background(),
 		URL:      url,
 		DestPath: destPath,
 		Token:    token,
@@ -209,12 +223,15 @@ func downloadFile(client *http.Client, url, destPath, token string) error {
 }
 
 func downloadFileWithOptions(client *http.Client, opts DownloadFileOptions) error {
+	if opts.Context == nil {
+		opts.Context = context.Background()
+	}
 	// Ensure parent directory exists
 	if err := os.MkdirAll(filepath.Dir(opts.DestPath), 0755); err != nil {
 		return fmt.Errorf("failed to create directory: %v", err)
 	}
 
-	req, err := http.NewRequest("GET", opts.URL, nil)
+	req, err := http.NewRequestWithContext(opts.Context, "GET", opts.URL, nil)
 	if err != nil {
 		return err
 	}

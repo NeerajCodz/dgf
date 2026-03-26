@@ -1,6 +1,7 @@
 package github
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
 
@@ -9,6 +10,10 @@ import (
 
 // FetchStructure fetches the complete repository structure
 func FetchStructure(client *Client, owner, repo, ref, path, requestType string, formats []string) (types.RepositoryStructure, error) {
+	return FetchStructureWithContext(context.Background(), client, owner, repo, ref, path, requestType, formats)
+}
+
+func FetchStructureWithContext(ctx context.Context, client *Client, owner, repo, ref, path, requestType string, formats []string) (types.RepositoryStructure, error) {
 	owner = strings.ToLower(owner)
 	repo = strings.ToLower(repo)
 
@@ -61,7 +66,7 @@ func FetchStructure(client *Client, owner, repo, ref, path, requestType string, 
 	}
 
 	// Directory request
-	contents, err := client.FetchContents(owner, repo, ref, path)
+	contents, err := client.FetchContentsWithContext(ctx, owner, repo, ref, path)
 	if err != nil {
 		return structure, err
 	}
@@ -96,7 +101,7 @@ func FetchStructure(client *Client, owner, repo, ref, path, requestType string, 
 		} else if content.Type == "dir" {
 			folderRequestPath := requestItemPath
 
-			subStructure, err := FetchStructure(client, owner, repo, ref, itemPath, "dir", formats)
+			subStructure, err := FetchStructureWithContext(ctx, client, owner, repo, ref, itemPath, "dir", formats)
 			if err != nil {
 				return structure, err
 			}
@@ -122,7 +127,11 @@ func FetchStructure(client *Client, owner, repo, ref, path, requestType string, 
 
 // FetchItems fetches repository items for the TUI browser
 func FetchItems(client *Client, owner, repo, ref, path string) ([]types.RepoItem, error) {
-	contents, err := client.FetchContents(owner, repo, ref, path)
+	return FetchItemsWithContext(context.Background(), client, owner, repo, ref, path)
+}
+
+func FetchItemsWithContext(ctx context.Context, client *Client, owner, repo, ref, path string) ([]types.RepoItem, error) {
+	contents, err := client.FetchContentsWithContext(ctx, owner, repo, ref, path)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +142,7 @@ func FetchItems(client *Client, owner, repo, ref, path string) ([]types.RepoItem
 		if c.DownloadURL != nil {
 			downloadURL = *c.DownloadURL
 		}
-		
+
 		items = append(items, types.RepoItem{
 			Name:        c.Name,
 			Path:        c.Path,
@@ -218,4 +227,8 @@ func matchesFormat(fileName string, formats []string) bool {
 // FetchFolderRecursive fetches all contents of a folder recursively for download
 func FetchFolderRecursive(client *Client, owner, repo, ref, path string) (types.RepositoryStructure, error) {
 	return FetchStructure(client, owner, repo, ref, path, "dir", nil)
+}
+
+func FetchFolderRecursiveWithContext(ctx context.Context, client *Client, owner, repo, ref, path string) (types.RepositoryStructure, error) {
+	return FetchStructureWithContext(ctx, client, owner, repo, ref, path, "dir", nil)
 }

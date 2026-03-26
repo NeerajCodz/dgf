@@ -1,6 +1,7 @@
 package github
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -69,6 +70,10 @@ func (c *Client) doWithAuthFallback(req *http.Request) (*http.Response, error) {
 
 // FetchContents fetches directory contents from GitHub API
 func (c *Client) FetchContents(owner, repo, ref, path string) ([]types.GitHubContent, error) {
+	return c.FetchContentsWithContext(context.Background(), owner, repo, ref, path)
+}
+
+func (c *Client) FetchContentsWithContext(ctx context.Context, owner, repo, ref, path string) ([]types.GitHubContent, error) {
 	owner = strings.ToLower(owner)
 	repo = strings.ToLower(repo)
 
@@ -80,7 +85,7 @@ func (c *Client) FetchContents(owner, repo, ref, path string) ([]types.GitHubCon
 		api += "?ref=" + ref
 	}
 
-	req, err := http.NewRequest("GET", api, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", api, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %v", err)
 	}
@@ -164,9 +169,13 @@ func (c *Client) FetchFile(owner, repo, ref, path string) (types.GitHubContent, 
 
 // FetchDefaultBranch retrieves the default branch of a repository
 func (c *Client) FetchDefaultBranch(owner, repo string) (string, error) {
+	return c.FetchDefaultBranchWithContext(context.Background(), owner, repo)
+}
+
+func (c *Client) FetchDefaultBranchWithContext(ctx context.Context, owner, repo string) (string, error) {
 	api := fmt.Sprintf("https://api.github.com/repos/%s/%s", owner, repo)
 
-	req, err := http.NewRequest("GET", api, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", api, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %v", err)
 	}
@@ -205,7 +214,11 @@ func (c *Client) FetchDefaultBranch(owner, repo string) (string, error) {
 
 // FetchRawFile fetches raw file content
 func (c *Client) FetchRawFile(downloadURL string) ([]byte, error) {
-	req, err := http.NewRequest("GET", downloadURL, nil)
+	return c.FetchRawFileWithContext(context.Background(), downloadURL)
+}
+
+func (c *Client) FetchRawFileWithContext(ctx context.Context, downloadURL string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", downloadURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %v", err)
 	}
@@ -241,8 +254,12 @@ func (c *Client) setHeaders(req *http.Request) {
 
 // FetchBranches fetches the list of branches for a repository
 func (c *Client) FetchBranches(owner, repo string) ([]string, error) {
+	return c.FetchBranchesWithContext(context.Background(), owner, repo)
+}
+
+func (c *Client) FetchBranchesWithContext(ctx context.Context, owner, repo string) ([]string, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/branches", owner, repo)
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -275,14 +292,18 @@ func (c *Client) FetchBranches(owner, repo string) ([]string, error) {
 
 // FetchBranchesWithCounts fetches branches and estimated commit counts for each branch.
 func (c *Client) FetchBranchesWithCounts(owner, repo string) ([]BranchInfo, error) {
-	names, err := c.FetchBranches(owner, repo)
+	return c.FetchBranchesWithCountsContext(context.Background(), owner, repo)
+}
+
+func (c *Client) FetchBranchesWithCountsContext(ctx context.Context, owner, repo string) ([]BranchInfo, error) {
+	names, err := c.FetchBranchesWithContext(ctx, owner, repo)
 	if err != nil {
 		return nil, err
 	}
 
 	result := make([]BranchInfo, 0, len(names))
 	for _, name := range names {
-		count, countErr := c.FetchBranchCommitCount(owner, repo, name)
+		count, countErr := c.FetchBranchCommitCountWithContext(ctx, owner, repo, name)
 		if countErr != nil {
 			count = -1
 		}
@@ -296,8 +317,12 @@ func (c *Client) FetchBranchesWithCounts(owner, repo string) ([]BranchInfo, erro
 
 // FetchBranchCommitCount returns approximate total commit count for a branch.
 func (c *Client) FetchBranchCommitCount(owner, repo, branch string) (int, error) {
+	return c.FetchBranchCommitCountWithContext(context.Background(), owner, repo, branch)
+}
+
+func (c *Client) FetchBranchCommitCountWithContext(ctx context.Context, owner, repo, branch string) (int, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/commits?sha=%s&per_page=1", owner, repo, branch)
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -329,6 +354,10 @@ func (c *Client) FetchBranchCommitCount(owner, repo, branch string) (int, error)
 
 // FetchCommits fetches recent commits for the selected repository ref.
 func (c *Client) FetchCommits(owner, repo, ref string, perPage int) ([]CommitInfo, error) {
+	return c.FetchCommitsWithContext(context.Background(), owner, repo, ref, perPage)
+}
+
+func (c *Client) FetchCommitsWithContext(ctx context.Context, owner, repo, ref string, perPage int) ([]CommitInfo, error) {
 	if perPage <= 0 {
 		perPage = 50
 	}
@@ -338,7 +367,7 @@ func (c *Client) FetchCommits(owner, repo, ref string, perPage int) ([]CommitInf
 		url += "&sha=" + ref
 	}
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -390,6 +419,10 @@ func (c *Client) FetchCommits(owner, repo, ref string, perPage int) ([]CommitInf
 
 // SearchCommits searches commits using GitHub Search API scoped to a repo.
 func (c *Client) SearchCommits(owner, repo, query string, perPage int) ([]CommitInfo, error) {
+	return c.SearchCommitsWithContext(context.Background(), owner, repo, query, perPage)
+}
+
+func (c *Client) SearchCommitsWithContext(ctx context.Context, owner, repo, query string, perPage int) ([]CommitInfo, error) {
 	if perPage <= 0 {
 		perPage = 10
 	}
@@ -399,7 +432,7 @@ func (c *Client) SearchCommits(owner, repo, query string, perPage int) ([]Commit
 	}
 	searchQ := fmt.Sprintf("%s repo:%s/%s", q, owner, repo)
 	api := fmt.Sprintf("https://api.github.com/search/commits?q=%s&per_page=%d", url.QueryEscape(searchQ), perPage)
-	req, err := http.NewRequest("GET", api, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", api, nil)
 	if err != nil {
 		return nil, err
 	}
