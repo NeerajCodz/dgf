@@ -19,22 +19,23 @@ import (
 
 // Model is the main Bubble Tea model for the TUI
 type Model struct {
-	state      *AppState
-	keys       KeyMap
-	selection  *selection.Manager
+	state     *AppState
+	keys      KeyMap
+	selection *selection.Manager
 
 	// UI components
-	urlInput    textinput.Model
-	searchInput textinput.Model
-	commitInput textinput.Model
-	spinner     spinner.Model
-	viewport    viewport.Model
+	urlInput        textinput.Model
+	searchInput     textinput.Model
+	modeSearchInput textinput.Model
+	commitInput     textinput.Model
+	spinner         spinner.Model
+	viewport        viewport.Model
 
 	// Dimensions
 	width  int
 	height int
 	ready  bool
-	
+
 	// Download progress monitoring
 	downloadProgressChan <-chan downloadProgressMsg
 }
@@ -60,6 +61,11 @@ func NewModel(initialURL, token string) Model {
 	commitInput.Placeholder = "Enter commit SHA (or leave empty for latest)"
 	commitInput.CharLimit = 40
 	commitInput.Width = 50
+
+	modeSearchInput := textinput.New()
+	modeSearchInput.Placeholder = "Search..."
+	modeSearchInput.CharLimit = 128
+	modeSearchInput.Width = 60
 
 	// Create enhanced spinner with smooth animation
 	sp := spinner.New()
@@ -93,13 +99,14 @@ func NewModel(initialURL, token string) Model {
 	}
 
 	m := Model{
-		state:       state,
-		keys:        DefaultKeyMap(),
-		selection:   selection.NewManager(),
-		urlInput:    urlInput,
-		searchInput: searchInput,
-		commitInput: commitInput,
-		spinner:     sp,
+		state:           state,
+		keys:            DefaultKeyMap(),
+		selection:       selection.NewManager(),
+		urlInput:        urlInput,
+		searchInput:     searchInput,
+		modeSearchInput: modeSearchInput,
+		commitInput:     commitInput,
+		spinner:         sp,
 	}
 
 	// Mark for auto-fetch after init
@@ -116,13 +123,13 @@ func (m Model) Init() tea.Cmd {
 		textinput.Blink,
 		m.spinner.Tick,
 	}
-	
+
 	// Auto-fetch if URL was provided
 	if m.state.AutoFetch {
 		m.state.AutoFetch = false
 		cmds = append(cmds, m.fetchRepository(m.urlInput.Value()))
 	}
-	
+
 	return tea.Batch(cmds...)
 }
 
@@ -173,8 +180,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state.SetMode(types.ModeBrowse)
 		} else {
 			m.state.AvailableBranches = msg.branches
+			if len(msg.details) > 0 {
+				m.state.BranchItems = msg.details
+			} else {
+				m.state.BranchItems = make([]github.BranchInfo, 0, len(msg.branches))
+				for _, name := range msg.branches {
+					m.state.BranchItems = append(m.state.BranchItems, github.BranchInfo{Name: name, CommitCount: -1})
+				}
+			}
+			m.state.FilterBranches("")
 			m.state.BranchCursor = 0
+			m.modeSearchInput.SetValue("")
+			m.modeSearchInput.Placeholder = "Search branch name"
+			m.modeSearchInput.Focus()
 			m.state.SetMode(types.ModeBranchSelect)
+		}
+
+	case commitsDoneMsg:
+		if msg.err != nil {
+			m.state.SetError(msg.err.Error())
+			m.state.SetMode(types.ModeBrowse)
+		} else {
+			m.state.CommitItems = msg.commits
+			m.state.FilterCommits("")
+			m.state.CommitCursor = 0
+			m.modeSearchInput.SetValue("")
+			m.modeSearchInput.Placeholder = "Search commit hash/message"
+			m.modeSearchInput.Focus()
+			m.state.SetMode(types.ModeCommitInput)
 		}
 
 	case previewDoneMsg:
@@ -208,11 +241,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case downloadDoneMsg:
 		m.state.IsDownloading = false
 		m.downloadProgressChan = nil // Clear the channel
-		m.state.SetMode(types.ModeBrowse)
 		if msg.err != nil {
+			m.state.SetMode(types.ModeBrowse)
 			m.state.SetError(msg.err.Error())
 		} else {
-			m.state.ShowToast(fmt.Sprintf("Downloaded %d files successfully", msg.count), types.ToastSuccess)
+			m.state.DownloadResultCount = msg.count
+			m.state.SetMode(types.ModeDownloadComplete)
+			cmds = append(cmds, autoExit())
+		}
+
+	case autoExitMsg:
+		if m.state.Mode == types.ModeDownloadComplete {
+			cmds = append(cmds, tea.Quit)
 		}
 
 	case tickMsg:
@@ -237,8 +277,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state.SearchQuery = m.searchInput.Value()
 	case types.ModeCommitInput:
 		var cmd tea.Cmd
-		m.commitInput, cmd = m.commitInput.Update(msg)
+		m.modeSearchInput, cmd = m.modeSearchInput.Update(msg)
 		cmds = append(cmds, cmd)
+		m.state.FilterCommits(m.modeSearchInput.Value())
+	case types.ModeBranchSelect:
+		var cmd tea.Cmd
+		m.modeSearchInput, cmd = m.modeSearchInput.Update(msg)
+		cmds = append(cmds, cmd)
+		m.state.FilterBranches(m.modeSearchInput.Value())
 	}
 
 	return m, tea.Batch(cmds...)
@@ -265,6 +311,8 @@ func (m Model) View() string {
 		content = m.viewHelp()
 	case types.ModeDownload:
 		content = m.viewDownload()
+	case types.ModeDownloadComplete:
+		content = m.viewDownloadComplete()
 	case types.ModeCommitInput:
 		content = m.viewCommitInput()
 	case types.ModeBranchSelect:
@@ -334,6 +382,18 @@ func (m *Model) handleInputKeys(key string, msg tea.KeyMsg) tea.Cmd {
 		return tea.Quit
 	case "?":
 		m.state.SetMode(types.ModeHelp)
+	case "b", "B":
+		if m.state.Owner != "" && m.state.Repo != "" {
+			m.state.Error = ""
+			m.state.SetMode(types.ModeLoading)
+			return m.fetchBranches()
+		}
+	case "c", "C":
+		if m.state.Owner != "" && m.state.Repo != "" {
+			m.state.Error = ""
+			m.state.SetMode(types.ModeLoading)
+			return m.fetchCommits()
+		}
 	case "esc":
 		if m.state.TokenEntry {
 			m.state.TokenEntry = false
@@ -479,10 +539,10 @@ func (m *Model) handleBrowseKeys(key string) tea.Cmd {
 		m.state.ConfirmInverseSelection = false
 		return m.refreshView()
 	case "c", "C":
-		// Enter commit ID
-		m.commitInput.SetValue(m.state.Commit)
-		m.commitInput.Focus()
-		m.state.SetMode(types.ModeCommitInput)
+		// Open commit selector
+		m.state.Error = ""
+		m.state.SetMode(types.ModeLoading)
+		return m.fetchCommits()
 	case "b", "B":
 		// Fetch and show branches
 		m.state.Error = ""
@@ -523,9 +583,27 @@ func (m *Model) handleSearchKeys(key string) tea.Cmd {
 
 func (m *Model) handleCommitInputKeys(key string) tea.Cmd {
 	switch key {
-	case "enter":
-		commit := strings.TrimSpace(m.commitInput.Value())
-		m.state.Commit = commit
+	case "tab":
+		if len(m.state.FilteredCommits) > 0 && m.state.CommitCursor >= 0 && m.state.CommitCursor < len(m.state.FilteredCommits) {
+			m.modeSearchInput.SetValue(m.state.FilteredCommits[m.state.CommitCursor].SHA)
+		}
+	case "up", "k":
+		if m.state.CommitCursor > 0 {
+			m.state.CommitCursor--
+		}
+	case "down", "j":
+		if m.state.CommitCursor < len(m.state.FilteredCommits)-1 {
+			m.state.CommitCursor++
+		}
+	case " ", "enter":
+		if len(m.state.FilteredCommits) > 0 && m.state.CommitCursor >= 0 && m.state.CommitCursor < len(m.state.FilteredCommits) {
+			c := m.state.FilteredCommits[m.state.CommitCursor]
+			m.state.Commit = c.SHA
+			m.state.SelectedCommitMsg = c.Message
+		} else {
+			commit := strings.TrimSpace(m.modeSearchInput.Value())
+			m.state.Commit = commit
+		}
 		m.state.SetMode(types.ModeBrowse)
 		return m.refreshView()
 	case "esc":
@@ -536,17 +614,28 @@ func (m *Model) handleCommitInputKeys(key string) tea.Cmd {
 
 func (m *Model) handleBranchSelectKeys(key string) tea.Cmd {
 	switch key {
+	case "tab":
+		if len(m.state.FilteredBranches) > 0 && m.state.BranchCursor >= 0 && m.state.BranchCursor < len(m.state.FilteredBranches) {
+			m.modeSearchInput.SetValue(m.state.FilteredBranches[m.state.BranchCursor].Name)
+		}
 	case "up", "k":
 		if m.state.BranchCursor > 0 {
 			m.state.BranchCursor--
 		}
 	case "down", "j":
-		if m.state.BranchCursor < len(m.state.AvailableBranches)-1 {
+		if m.state.BranchCursor < len(m.state.FilteredBranches)-1 {
 			m.state.BranchCursor++
 		}
-	case "enter":
-		if len(m.state.AvailableBranches) > 0 && m.state.BranchCursor >= 0 && m.state.BranchCursor < len(m.state.AvailableBranches) {
-			m.state.Branch = m.state.AvailableBranches[m.state.BranchCursor]
+	case " ", "enter":
+		if len(m.state.FilteredBranches) > 0 && m.state.BranchCursor >= 0 && m.state.BranchCursor < len(m.state.FilteredBranches) {
+			m.state.Branch = m.state.FilteredBranches[m.state.BranchCursor].Name
+			m.state.Commit = ""
+			m.state.SetMode(types.ModeBrowse)
+			return m.refreshView()
+		}
+		typed := strings.TrimSpace(m.modeSearchInput.Value())
+		if typed != "" {
+			m.state.Branch = typed
 			m.state.Commit = ""
 			m.state.SetMode(types.ModeBrowse)
 			return m.refreshView()

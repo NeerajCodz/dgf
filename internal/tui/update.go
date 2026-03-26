@@ -38,7 +38,21 @@ type downloadDoneMsg struct {
 
 type branchesDoneMsg struct {
 	branches []string
+	details  []github.BranchInfo
 	err      error
+}
+
+type commitsDoneMsg struct {
+	commits []github.CommitInfo
+	err     error
+}
+
+type autoExitMsg struct{}
+
+func autoExit() tea.Cmd {
+	return tea.Tick(2*time.Second, func(_ time.Time) tea.Msg {
+		return autoExitMsg{}
+	})
 }
 
 type tickMsg time.Time
@@ -127,7 +141,7 @@ func (m *Model) navigateToFolder(path string) tea.Cmd {
 		m.selection.SyncWithItems(m.state.Items)
 		return nil
 	}
-	
+
 	// Not cached, fetch from API
 	m.state.SetMode(types.ModeLoading)
 	m.state.Path = path
@@ -141,12 +155,12 @@ func (m *Model) navigateToFolder(path string) tea.Cmd {
 			m.state.GetRef(),
 			path,
 		)
-		
+
 		// Cache the result if successful
 		if err == nil && items != nil {
 			m.state.DirCache[cacheKey] = items
 		}
-		
+
 		return fetchDoneMsg{items: items, err: err}
 	}
 }
@@ -296,11 +310,11 @@ func (m *Model) startDownload() tea.Cmd {
 
 		// Create a channel to capture progress updates
 		progressChan := make(chan downloadProgressMsg, 10)
-		
+
 		// Track current file being downloaded
 		var currentFile string
 		var currentMutex sync.Mutex
-		
+
 		// Start download in background goroutine
 		go func() {
 			err := github.Download(structure, github.DownloadOptions{
@@ -334,9 +348,9 @@ func (m *Model) startDownload() tea.Cmd {
 					}
 				},
 			})
-			
+
 			close(progressChan)
-			
+
 			// Send final download completion message after progress channel is exhausted
 			// Note: We'll drain the progress channel in Update() via monitorDownloadProgress
 			if err != nil {
@@ -413,6 +427,18 @@ func (m *Model) fetchBranches() tea.Cmd {
 		if err != nil {
 			return branchesDoneMsg{err: err}
 		}
-		return branchesDoneMsg{branches: branches}
+		details, detailErr := m.state.Client.FetchBranchesWithCounts(m.state.Owner, m.state.Repo)
+		if detailErr != nil {
+			details = nil
+		}
+		return branchesDoneMsg{branches: branches, details: details}
+	}
+}
+
+func (m *Model) fetchCommits() tea.Cmd {
+	return func() tea.Msg {
+		ref := m.state.GetRef()
+		commits, err := m.state.Client.FetchCommits(m.state.Owner, m.state.Repo, ref, 100)
+		return commitsDoneMsg{commits: commits, err: err}
 	}
 }

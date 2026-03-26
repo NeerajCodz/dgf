@@ -5,10 +5,27 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/NeerajCodz/dgf/pkg/types"
 )
+
+// CommitInfo stores minimal commit metadata for selector UI.
+type CommitInfo struct {
+	SHA     string
+	Message string
+	Author  string
+	Date    time.Time
+}
+
+// BranchInfo stores branch details and commit counts.
+type BranchInfo struct {
+	Name        string
+	CommitCount int
+}
 
 // Client handles GitHub API interactions
 type Client struct {
@@ -53,7 +70,7 @@ func (c *Client) doWithAuthFallback(req *http.Request) (*http.Response, error) {
 func (c *Client) FetchContents(owner, repo, ref, path string) ([]types.GitHubContent, error) {
 	owner = strings.ToLower(owner)
 	repo = strings.ToLower(repo)
-	
+
 	api := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents", owner, repo)
 	if path != "" {
 		api += "/" + path
@@ -97,7 +114,7 @@ func (c *Client) FetchContents(owner, repo, ref, path string) ([]types.GitHubCon
 // FetchFile fetches a single file's metadata from GitHub API
 func (c *Client) FetchFile(owner, repo, ref, path string) (types.GitHubContent, error) {
 	var content types.GitHubContent
-	
+
 	api := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s", owner, repo, path)
 	if ref != "" {
 		api += "?ref=" + ref
@@ -147,7 +164,7 @@ func (c *Client) FetchFile(owner, repo, ref, path string) (types.GitHubContent, 
 // FetchDefaultBranch retrieves the default branch of a repository
 func (c *Client) FetchDefaultBranch(owner, repo string) (string, error) {
 	api := fmt.Sprintf("https://api.github.com/repos/%s/%s", owner, repo)
-	
+
 	req, err := http.NewRequest("GET", api, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %v", err)
@@ -251,6 +268,134 @@ func (c *Client) FetchBranches(owner, repo string) ([]string, error) {
 	for i, b := range branchData {
 		branches[i] = b.Name
 	}
-	
+
 	return branches, nil
+}
+
+// FetchBranchesWithCounts fetches branches and estimated commit counts for each branch.
+func (c *Client) FetchBranchesWithCounts(owner, repo string) ([]BranchInfo, error) {
+	names, err := c.FetchBranches(owner, repo)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]BranchInfo, 0, len(names))
+	for _, name := range names {
+		count, countErr := c.FetchBranchCommitCount(owner, repo, name)
+		if countErr != nil {
+			count = -1
+		}
+		result = append(result, BranchInfo{
+			Name:        name,
+			CommitCount: count,
+		})
+	}
+	return result, nil
+}
+
+// FetchBranchCommitCount returns approximate total commit count for a branch.
+func (c *Client) FetchBranchCommitCount(owner, repo, branch string) (int, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/commits?sha=%s&per_page=1", owner, repo, branch)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return 0, err
+	}
+	c.setHeaders(req)
+
+	resp, err := c.doWithAuthFallback(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("failed to fetch branch commit count: status %d", resp.StatusCode)
+	}
+
+	link := resp.Header.Get("Link")
+	if link != "" {
+		if last := parseLastPageFromLink(link); last > 0 {
+			return last, nil
+		}
+	}
+
+	var rows []json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&rows); err != nil {
+		return 0, err
+	}
+	return len(rows), nil
+}
+
+// FetchCommits fetches recent commits for the selected repository ref.
+func (c *Client) FetchCommits(owner, repo, ref string, perPage int) ([]CommitInfo, error) {
+	if perPage <= 0 {
+		perPage = 50
+	}
+
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/commits?per_page=%d", owner, repo, perPage)
+	if ref != "" {
+		url += "&sha=" + ref
+	}
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	c.setHeaders(req)
+
+	resp, err := c.doWithAuthFallback(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusForbidden {
+		return nil, ErrRateLimited
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to fetch commits: status %d", resp.StatusCode)
+	}
+
+	var payload []struct {
+		SHA    string `json:"sha"`
+		Commit struct {
+			Message string `json:"message"`
+			Author  struct {
+				Name string    `json:"name"`
+				Date time.Time `json:"date"`
+			} `json:"author"`
+		} `json:"commit"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, err
+	}
+
+	out := make([]CommitInfo, 0, len(payload))
+	for _, row := range payload {
+		msg := row.Commit.Message
+		if idx := strings.Index(msg, "\n"); idx >= 0 {
+			msg = msg[:idx]
+		}
+		out = append(out, CommitInfo{
+			SHA:     row.SHA,
+			Message: msg,
+			Author:  row.Commit.Author.Name,
+			Date:    row.Commit.Author.Date,
+		})
+	}
+	return out, nil
+}
+
+func parseLastPageFromLink(linkHeader string) int {
+	re := regexp.MustCompile(`[\?&]page=(\d+)>;\s*rel="last"`)
+	m := re.FindStringSubmatch(linkHeader)
+	if len(m) != 2 {
+		return 0
+	}
+	n, err := strconv.Atoi(m[1])
+	if err != nil {
+		return 0
+	}
+	return n
 }

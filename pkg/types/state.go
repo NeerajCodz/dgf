@@ -10,6 +10,7 @@ const (
 	ModePreview                 // File preview modal
 	ModeHelp                    // Help overlay
 	ModeDownload                // Download progress
+	ModeDownloadComplete        // Download completed screen (auto-exit)
 	ModeSearch                  // Search overlay active
 	ModeCommitInput             // Commit ID input
 	ModeBranchSelect            // Branch selection
@@ -30,6 +31,8 @@ func (m AppMode) String() string {
 		return "help"
 	case ModeDownload:
 		return "download"
+	case ModeDownloadComplete:
+		return "download_complete"
 	case ModeSearch:
 		return "search"
 	case ModeCommitInput:

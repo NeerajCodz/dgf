@@ -18,15 +18,16 @@ import (
 func (m Model) viewInput() string {
 	var b strings.Builder
 
-	// ASCII logo - centered
+	// Polished static figlet-style logo
 	logoLines := []string{
-		"____  ____________",
-		"/ __ \\/ ____/ ____/",
-		"/ / / / / __/ /_",
-		"/ /_/ / /_/ / __/",
-		"/_____/\\____/_/",
+		"██████╗  ██████╗ ███████╗",
+		"██╔══██╗██╔════╝ ██╔════╝",
+		"██║  ██║██║  ███╗█████╗  ",
+		"██║  ██║██║   ██║██╔══╝  ",
+		"██████╔╝╚██████╔╝██║     ",
+		"╚═════╝  ╚═════╝ ╚═╝     ",
 		"",
-		"v2.0 Terminal UI",
+		"Direct Git Fetch v2.0",
 	}
 	logoStyle := lipgloss.NewStyle().Foreground(ColorLogo).Bold(true)
 	for _, line := range logoLines {
@@ -34,6 +35,25 @@ func (m Model) viewInput() string {
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
+
+	// Selected context (repo/branch/commit) on home
+	if m.state.Owner != "" && m.state.Repo != "" {
+		repoLine := fmt.Sprintf("Repo: github.com/%s/%s", m.state.Owner, m.state.Repo)
+		branchLabel := m.state.GetBranchLabel()
+		commitLabel := m.state.GetCommitLabel()
+		branchText := "Branch: " + branchLabel
+		commitText := "Commit: " + commitLabel
+		if branchLabel == "latest" {
+			branchText = lipgloss.NewStyle().Foreground(ColorSubtle).Render(branchText)
+		}
+		if commitLabel == "latest" {
+			commitText = lipgloss.NewStyle().Foreground(ColorSubtle).Render(commitText)
+		}
+		b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Foreground(ColorInfo).Render(repoLine)))
+		b.WriteString("\n")
+		b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, branchText+"    "+commitText))
+		b.WriteString("\n\n")
+	}
 
 	// Tagline
 	taglineStyle := lipgloss.NewStyle().Foreground(ColorAccent).Italic(true)
@@ -58,7 +78,7 @@ func (m Model) viewInput() string {
 		"Tip: Paste any GitHub URL and press Enter",
 		"",
 		"Controls:",
-		"  Enter: Browse repository  •  ?: Help  •  q: Quit",
+		"  Enter: Browse  •  B: Branch selector  •  C: Commit selector  •  ?: Help  •  q: Quit",
 	}
 
 	for i, line := range examples {
@@ -85,7 +105,7 @@ func (m Model) viewInput() string {
 			Width(70).
 			Align(lipgloss.Center).
 			Render("ERROR: " + m.state.Error)
-		
+
 		b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, errorBox))
 	}
 
@@ -106,12 +126,12 @@ func (m Model) viewLoading() string {
 	spinnerStyle := lipgloss.NewStyle().
 		Foreground(ColorAccent).
 		Bold(true)
-	
+
 	messageStyle := lipgloss.NewStyle().
 		Foreground(ColorForeground)
 
 	spinnerStr := m.spinner.View()
-	
+
 	var message string
 	if m.state.Owner != "" && m.state.Repo != "" {
 		message = fmt.Sprintf("Fetching %s/%s...", m.state.Owner, m.state.Repo)
@@ -123,10 +143,10 @@ func (m Model) viewLoading() string {
 	}
 
 	content := spinnerStyle.Render(spinnerStr) + " " + messageStyle.Render(message)
-	
+
 	b.WriteString(boxStyle.Render(content))
 	b.WriteString("\n\n")
-	
+
 	// Helpful tip while loading
 	tipStyle := lipgloss.NewStyle().
 		Foreground(ColorSubtle).
@@ -152,10 +172,24 @@ func (m Model) viewBrowser() string {
 	titleStyle := lipgloss.NewStyle().Foreground(ColorLogo).Bold(true)
 	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, titleStyle.Render(titleText)))
 	b.WriteString("\n")
-	
+
 	// Separator line (clean ASCII)
 	separatorStyle := lipgloss.NewStyle().Foreground(ColorBorder)
 	separator := separatorStyle.Render(strings.Repeat("-", max(1, m.width)))
+	b.WriteString(separator)
+	b.WriteString("\n")
+
+	repoLine := fmt.Sprintf("Repo: github.com/%s/%s", m.state.Owner, m.state.Repo)
+	branchLabel := m.state.GetBranchLabel()
+	commitLabel := m.state.GetCommitLabel()
+	refLine := fmt.Sprintf("Branch: %s    Commit: %s", branchLabel, commitLabel)
+	if branchLabel == "latest" || commitLabel == "latest" {
+		refLine = lipgloss.NewStyle().Foreground(ColorSubtle).Render(refLine)
+	}
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Foreground(ColorInfo).Render(repoLine)))
+	b.WriteString("\n")
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, refLine))
+	b.WriteString("\n")
 	b.WriteString(separator)
 	b.WriteString("\n")
 
@@ -177,7 +211,7 @@ func (m Model) viewBrowser() string {
 	m.selection.SyncWithItems(m.state.Items)
 
 	// Calculate visible area
-	listHeight := m.height - 8 // Leave room for title, breadcrumb, table header, status
+	listHeight := m.height - 12 // Leave room for richer header and status
 	if listHeight < 5 {
 		listHeight = 5
 	}
@@ -226,7 +260,7 @@ func (m Model) viewBrowser() string {
 			Width(50)
 
 		searchContent := "Search: " + m.searchInput.View()
-		
+
 		searchInfo := lipgloss.NewStyle().
 			Foreground(ColorSuccess).
 			Bold(true).
@@ -261,49 +295,102 @@ func (m Model) viewRateLimit() string {
 
 func (m Model) viewCommitInput() string {
 	var b strings.Builder
-	title := lipgloss.NewStyle().Foreground(ColorAccent).Bold(true).Render("Select Commit")
+	title := lipgloss.NewStyle().Foreground(ColorAccent).Bold(true).Render("Commit Selector")
 	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, title))
 	b.WriteString("\n")
-	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Foreground(ColorSubtle).Render("Enter commit SHA (empty = current branch head)")))
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Foreground(ColorSubtle).Render("Type hash/message to filter. Tab autofills highlighted commit.")))
 	b.WriteString("\n\n")
-	box := InputFocusedStyle.Width(60).Render(m.commitInput.View())
+	boxWidth := minInt(90, max(60, m.width-8))
+	box := InputFocusedStyle.Width(boxWidth).Render(m.modeSearchInput.View())
 	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, box))
 	b.WriteString("\n\n")
-	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Foreground(ColorSubtle).Render("Enter: apply  Esc: cancel")))
+
+	rows := m.state.FilteredCommits
+	maxRows := max(5, m.height-14)
+	start := 0
+	if m.state.CommitCursor >= maxRows {
+		start = m.state.CommitCursor - maxRows + 1
+	}
+	end := minInt(len(rows), start+maxRows)
+	header := fmt.Sprintf("%-16s %-10s %-36s %-18s", "DATE/TIME", "HASH", "MESSAGE", "AUTHOR")
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Bold(true).Render(header)))
+	b.WriteString("\n")
+	for i := start; i < end; i++ {
+		c := rows[i]
+		hash := c.SHA
+		if len(hash) > 8 {
+			hash = hash[:8]
+		}
+		date := c.Date.Local().Format("2006-01-02 15:04")
+		line := fmt.Sprintf("%-16s %-10s %-36s %-18s",
+			truncateDisplay(date, 16),
+			truncateDisplay(hash, 10),
+			truncateDisplay(c.Message, 36),
+			truncateDisplay(c.Author, 18))
+		if i == m.state.CommitCursor {
+			line = CursorStyle.Width(boxWidth).Render(line)
+		}
+		b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, line))
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Foreground(ColorSubtle).Render("↑↓/jk move  Tab autofill  Space/Enter select  Esc cancel")))
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, b.String())
 }
 
 func (m Model) viewBranchSelect() string {
 	var b strings.Builder
-	title := lipgloss.NewStyle().Foreground(ColorAccent).Bold(true).Render("Select Branch")
+	title := lipgloss.NewStyle().Foreground(ColorAccent).Bold(true).Render("Branch Selector")
 	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, title))
+	b.WriteString("\n")
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Foreground(ColorSubtle).Render("Type branch to filter. Tab autofills highlighted branch.")))
 	b.WriteString("\n\n")
 
-	maxRows := m.height - 8
-	if maxRows < 5 {
-		maxRows = 5
-	}
+	boxWidth := minInt(90, max(60, m.width-8))
+	box := InputFocusedStyle.Width(boxWidth).Render(m.modeSearchInput.View())
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, box))
+	b.WriteString("\n\n")
+
+	rows := m.state.FilteredBranches
+	maxRows := max(5, m.height-16)
 	start := 0
 	if m.state.BranchCursor >= maxRows {
 		start = m.state.BranchCursor - maxRows + 1
 	}
-	end := start + maxRows
-	if end > len(m.state.AvailableBranches) {
-		end = len(m.state.AvailableBranches)
-	}
+	end := minInt(len(rows), start+maxRows)
+
+	header := fmt.Sprintf("%-50s %-12s", "BRANCH", "COMMITS")
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Bold(true).Render(header)))
+	b.WriteString("\n")
 
 	for i := start; i < end; i++ {
-		branch := m.state.AvailableBranches[i]
-		line := "  " + branch
+		branch := rows[i]
+		count := "-"
+		if branch.CommitCount >= 0 {
+			count = fmt.Sprintf("%d", branch.CommitCount)
+		}
+		line := fmt.Sprintf("%-50s %-12s", truncateDisplay(branch.Name, 50), count)
 		if i == m.state.BranchCursor {
-			line = CursorStyle.Width(60).Render("> " + branch)
+			line = CursorStyle.Width(boxWidth).Render(line)
 		}
 		b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, line))
 		b.WriteString("\n")
 	}
 
 	b.WriteString("\n")
-	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Foreground(ColorSubtle).Render("Enter: select  Esc: cancel  ↑↓/jk: move")))
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Foreground(ColorSubtle).Render("↑↓/jk move  Tab autofill  Space/Enter select  Esc cancel")))
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, b.String())
+}
+
+func (m Model) viewDownloadComplete() string {
+	var b strings.Builder
+	title := lipgloss.NewStyle().Foreground(ColorSuccess).Bold(true).Render("Download Complete")
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, title))
+	b.WriteString("\n\n")
+	summary := fmt.Sprintf("Downloaded %d files successfully", m.state.DownloadResultCount)
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Foreground(ColorForeground).Render(summary)))
+	b.WriteString("\n")
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Foreground(ColorSubtle).Render("Exiting automatically...")))
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, b.String())
 }
 
@@ -339,8 +426,6 @@ func (m Model) renderItem(item types.RepoItem, isCursor bool, icons IconSet) str
 	return line
 }
 
-
-
 // highlightMatches highlights search query characters in the text
 func (m Model) highlightMatches(text string, baseStyle lipgloss.Style, isCursor bool) string {
 	// If no search query, return styled text as-is
@@ -349,12 +434,12 @@ func (m Model) highlightMatches(text string, baseStyle lipgloss.Style, isCursor 
 	}
 
 	query := strings.ToLower(m.state.SearchQuery)
-	
+
 	// Find all match positions
 	var result strings.Builder
 	lastPos := 0
 	highlightStyle := baseStyle.Copy().Bold(true).Foreground(ColorHighlight)
-	
+
 	for i := 0; i < len(text); i++ {
 		// Look for next match starting at current position in query
 		found := false
@@ -381,17 +466,17 @@ func (m Model) highlightMatches(text string, baseStyle lipgloss.Style, isCursor 
 			break
 		}
 	}
-	
+
 	// Add remaining text
 	if lastPos < len(text) {
 		result.WriteString(baseStyle.Render(text[lastPos:]))
 	}
-	
+
 	// If nothing was added, just return the styled text
 	if result.Len() == 0 {
 		return baseStyle.Render(text)
 	}
-	
+
 	return result.String()
 }
 
@@ -433,7 +518,7 @@ func (m Model) renderStatusBar(_ IconSet) string {
 	}
 
 	statusLine := left + strings.Repeat(" ", spacing) + right
-	
+
 	return StatusBarStyle.Width(m.width).Render(statusLine)
 }
 
@@ -499,12 +584,19 @@ func max(a, b int) int {
 	return b
 }
 
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 // highlightCode applies syntax highlighting to code content
 func highlightCode(content string, filePath string) string {
 	// Get lexer based on file extension
 	ext := filepath.Ext(filePath)
 	lexer := lexers.Get(strings.TrimPrefix(ext, "."))
-	
+
 	// Fall back to plain text if language not recognized
 	if lexer == nil {
 		// Try to guess from filename
@@ -513,31 +605,31 @@ func highlightCode(content string, filePath string) string {
 			lexer = lexers.Fallback
 		}
 	}
-	
+
 	// Use a terminal-friendly formatter with ANSI colors
 	formatter := formatters.Get("terminal256")
 	if formatter == nil {
 		formatter = formatters.Get("terminal")
 	}
-	
+
 	// Get a style suitable for dark terminals
 	style := styles.Get("monokai")
 	if style == nil {
 		style = styles.Fallback
 	}
-	
+
 	// Tokenize and format
 	tokens, err := lexer.Tokenise(nil, content)
 	if err != nil {
 		return content // Fall back to plain text on error
 	}
-	
+
 	var buf strings.Builder
 	err = formatter.Format(&buf, style, tokens)
 	if err != nil {
 		return content // Fall back to plain text on error
 	}
-	
+
 	return buf.String()
 }
 
@@ -552,14 +644,14 @@ func (m Model) viewPreview() string {
 		Bold(true).
 		Padding(0, 2).
 		Width(m.width - 4)
-	
+
 	fileInfo := fmt.Sprintf("📄 %s", m.state.PreviewPath)
 	b.WriteString(titleBar.Render(fileInfo))
 	b.WriteString("\n")
 
 	// Apply syntax highlighting
 	highlightedContent := highlightCode(m.state.PreviewContent, m.state.PreviewPath)
-	
+
 	// Content with line numbers
 	lines := strings.Split(highlightedContent, "\n")
 	maxLines := m.height - 10
@@ -585,18 +677,18 @@ func (m Model) viewPreview() string {
 		Foreground(ColorSubtle).
 		Width(5).
 		Align(lipgloss.Right)
-	
+
 	contentWidth := m.width - 12 // Account for line numbers and padding
 
 	for i := start; i < end; i++ {
 		lineNum := lineNumStyle.Render(fmt.Sprintf("%d", i+1))
 		line := lines[i]
-		
+
 		// Truncate if too long
 		if len(line) > contentWidth {
 			line = line[:contentWidth-3] + "..."
 		}
-		
+
 		lineContent := fmt.Sprintf("%s │ %s", lineNum, line)
 		b.WriteString(lineContent)
 		b.WriteString("\n")
@@ -609,7 +701,7 @@ func (m Model) viewPreview() string {
 		Foreground(ColorForeground).
 		Padding(0, 2).
 		Width(m.width - 4)
-	
+
 	scrollInfo := fmt.Sprintf("Lines %d-%d of %d", start+1, end, len(lines))
 	hints := "  │  ↑↓: scroll  │  ESC: close  │  ?: help"
 	footer := scrollInfo + hints
@@ -635,7 +727,7 @@ func (m Model) viewHelp() string {
 		Bold(true).
 		Padding(0, 2).
 		Width(m.width - 8)
-	
+
 	b.WriteString(headerStyle.Render("DGF Keyboard Shortcuts & Help"))
 	b.WriteString("\n\n")
 
@@ -644,12 +736,12 @@ func (m Model) viewHelp() string {
 		Foreground(ColorAccent).
 		Bold(true).
 		Underline(true)
-	
+
 	keyStyle := lipgloss.NewStyle().
 		Foreground(ColorSuccess).
 		Bold(true).
 		Width(18)
-	
+
 	descStyle := lipgloss.NewStyle().
 		Foreground(ColorForeground)
 
@@ -713,11 +805,11 @@ func (m Model) viewHelp() string {
 	// Tips section
 	b.WriteString(sectionTitleStyle.Render("Tips"))
 	b.WriteString("\n")
-	
+
 	tipStyle := lipgloss.NewStyle().
 		Foreground(ColorInfo).
 		Italic(true)
-	
+
 	tips := []string{
 		"• Use [●] markers to see which items are selected",
 		"• Download directory can be set via 'dgf config set download_path <path>'",
@@ -725,14 +817,14 @@ func (m Model) viewHelp() string {
 		"• Directories are cached in memory - navigating back is instant",
 		"• Search is case-insensitive and matches filenames",
 	}
-	
+
 	for _, tip := range tips {
-		b.WriteString(tipStyle.Render("  "+tip))
+		b.WriteString(tipStyle.Render("  " + tip))
 		b.WriteString("\n")
 	}
 
 	b.WriteString("\n")
-	
+
 	// Footer
 	footerStyle := lipgloss.NewStyle().
 		Foreground(ColorSubtle).
@@ -764,7 +856,7 @@ func (m Model) viewDownload() string {
 	titleStyle := lipgloss.NewStyle().
 		Foreground(ColorSuccess).
 		Bold(true)
-	
+
 	b.WriteString(titleStyle.Render("Downloading Files"))
 	b.WriteString("\n\n")
 
@@ -780,7 +872,7 @@ func (m Model) viewDownload() string {
 
 	barStyle := lipgloss.NewStyle().Foreground(ColorSuccess)
 	emptyStyle := lipgloss.NewStyle().Foreground(ColorBorder)
-	
+
 	bar := barStyle.Render(strings.Repeat("█", filled)) + emptyStyle.Render(strings.Repeat("░", barWidth-filled))
 	percentage := int(m.state.DownloadProgress * 100)
 	progressLine := fmt.Sprintf("[%s] %3d%%", bar, percentage)
@@ -791,7 +883,7 @@ func (m Model) viewDownload() string {
 	statsStyle := lipgloss.NewStyle().
 		Foreground(ColorInfo).
 		Bold(true)
-	
+
 	info := fmt.Sprintf("Files: %s/%d", statsStyle.Render(fmt.Sprintf("%d", m.state.DownloadDone)), m.state.DownloadTotal)
 	b.WriteString(info)
 	b.WriteString("\n\n")
@@ -800,13 +892,13 @@ func (m Model) viewDownload() string {
 	if m.state.DownloadCurrent != "" {
 		labelStyle := lipgloss.NewStyle().
 			Foreground(ColorSubtle)
-		
+
 		fileStyle := lipgloss.NewStyle().
 			Foreground(ColorAccent).
 			Italic(true)
-		
+
 		b.WriteString(labelStyle.Render("Current: "))
-		
+
 		current := m.state.DownloadCurrent
 		maxLen := 60
 		if len(current) > maxLen {
@@ -823,7 +915,7 @@ func (m Model) viewDownload() string {
 	}
 
 	content := boxStyle.Render(b.String())
-	
+
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, content)
 }
 

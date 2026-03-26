@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"strings"
+
 	"github.com/NeerajCodz/dgf/internal/github"
 	"github.com/NeerajCodz/dgf/pkg/types"
 )
@@ -12,16 +14,26 @@ type AppState struct {
 	PrevMode types.AppMode
 
 	// Repository info
-	Owner    string
-	Repo     string
-	Branch   string
-	Commit   string
-	Path     string
-	Token    string
-	
+	Owner  string
+	Repo   string
+	Branch string
+	Commit string
+	Path   string
+	Token  string
+
 	// Branch selection
 	AvailableBranches []string
 	BranchCursor      int
+	BranchQuery       string
+	FilteredBranches  []github.BranchInfo
+	BranchItems       []github.BranchInfo
+
+	// Commit selection
+	CommitCursor      int
+	CommitQuery       string
+	FilteredCommits   []github.CommitInfo
+	CommitItems       []github.CommitInfo
+	SelectedCommitMsg string
 
 	// Navigation
 	NavigationStack []types.NavigationEntry
@@ -29,12 +41,12 @@ type AppState struct {
 	ScrollOffset    int
 
 	// Items
-	Items        []types.RepoItem
+	Items         []types.RepoItem
 	FilteredItems []types.RepoItem
-	FullTree     []types.RepoItem
-	
+	FullTree      []types.RepoItem
+
 	// Directory cache to avoid refetching
-	DirCache     map[string][]types.RepoItem
+	DirCache map[string][]types.RepoItem
 
 	// Selection
 	SelectedPaths map[string]bool
@@ -42,8 +54,8 @@ type AppState struct {
 	SelectedCount int
 
 	// Search
-	IsSearching  bool
-	SearchQuery  string
+	IsSearching bool
+	SearchQuery string
 
 	// Preview
 	PreviewContent string
@@ -52,24 +64,25 @@ type AppState struct {
 	PreviewScroll  int
 
 	// Download
-	DownloadPath       string
-	DownloadProgress   float64
-	DownloadCurrent    string
-	DownloadTotal      int
-	DownloadDone       int
-	IsDownloading      bool
-	ConfirmDownload    bool
-	ConfirmDownloadSize  string
+	DownloadPath            string
+	DownloadProgress        float64
+	DownloadCurrent         string
+	DownloadTotal           int
+	DownloadDone            int
+	DownloadResultCount     int
+	IsDownloading           bool
+	ConfirmDownload         bool
+	ConfirmDownloadSize     string
 	ConfirmInverseSelection bool
 
 	// UI
-	ASCIIMode   bool
-	Toast       *types.Toast
-	FrameCount  uint64
-	Width       int
-	Height      int
-	Error       string
-	TokenEntry  bool
+	ASCIIMode  bool
+	Toast      *types.Toast
+	FrameCount uint64
+	Width      int
+	Height     int
+	Error      string
+	TokenEntry bool
 
 	// Config
 	Config types.Config
@@ -239,4 +252,61 @@ func (s *AppState) GetBreadcrumb() string {
 		breadcrumb += "/" + s.Path
 	}
 	return breadcrumb
+}
+
+// GetBranchLabel returns branch label for header.
+func (s *AppState) GetBranchLabel() string {
+	if s.Branch == "" {
+		return "latest"
+	}
+	return s.Branch
+}
+
+// GetCommitLabel returns commit label for header.
+func (s *AppState) GetCommitLabel() string {
+	if s.Commit == "" {
+		return "latest"
+	}
+	if len(s.Commit) > 8 {
+		return s.Commit[:8]
+	}
+	return s.Commit
+}
+
+func (s *AppState) FilterBranches(query string) {
+	s.BranchQuery = query
+	if query == "" {
+		s.FilteredBranches = append([]github.BranchInfo(nil), s.BranchItems...)
+		return
+	}
+	q := strings.ToLower(query)
+	filtered := make([]github.BranchInfo, 0, len(s.BranchItems))
+	for _, item := range s.BranchItems {
+		if strings.Contains(strings.ToLower(item.Name), q) {
+			filtered = append(filtered, item)
+		}
+	}
+	s.FilteredBranches = filtered
+	if s.BranchCursor >= len(s.FilteredBranches) {
+		s.BranchCursor = max(0, len(s.FilteredBranches)-1)
+	}
+}
+
+func (s *AppState) FilterCommits(query string) {
+	s.CommitQuery = query
+	if query == "" {
+		s.FilteredCommits = append([]github.CommitInfo(nil), s.CommitItems...)
+		return
+	}
+	q := strings.ToLower(query)
+	filtered := make([]github.CommitInfo, 0, len(s.CommitItems))
+	for _, item := range s.CommitItems {
+		if strings.Contains(strings.ToLower(item.SHA), q) || strings.Contains(strings.ToLower(item.Message), q) {
+			filtered = append(filtered, item)
+		}
+	}
+	s.FilteredCommits = filtered
+	if s.CommitCursor >= len(s.FilteredCommits) {
+		s.CommitCursor = max(0, len(s.FilteredCommits)-1)
+	}
 }
