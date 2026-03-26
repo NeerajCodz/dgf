@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [2.0.0] - 2026-03-26
 
+### Maintenance
+- Consolidated repository config assets to canonical `config/` directory.
+- Removed duplicate `configs/` directory and orphaned `internal/cli/*.json` config copies.
+- Removed release-process markdown files and kept changelog-driven release history.
+- Hardened installer temp/error handling with portable temp files and stricter checksum enforcement.
+- Shifted non-root install fallback to `$HOME/.local/bin` for safer user-level installs.
+- Removed tracked root binary artifacts (`dgf-cli.exe`) from repository.
+
 ### Added
 
 #### Interactive TUI
