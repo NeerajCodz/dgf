@@ -150,7 +150,7 @@ func (m Model) viewLoading() string {
 	tipStyle := lipgloss.NewStyle().
 		Foreground(ColorSubtle).
 		Italic(true)
-	b.WriteString(tipStyle.Render("💡 Tip: You can select multiple files before downloading"))
+	b.WriteString(tipStyle.Render("Tip: You can select multiple files before downloading"))
 
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, b.String())
 }
@@ -159,39 +159,33 @@ func (m Model) viewLoading() string {
 func (m Model) viewBrowser() string {
 	var b strings.Builder
 
-	// Header with centered logo and breadcrumb
-	logoStyle := lipgloss.NewStyle().
+	// Centered title
+	titleStyle := lipgloss.NewStyle().
 		Foreground(ColorLogo).
-		Bold(true)
+		Bold(true).
+		Align(lipgloss.Center)
 	
-	logoText := "╔═══════════════════════════════════════╗\n"
-	logoText += "║   Direct Git Fetch • DGF v2.0        ║\n"
-	logoText += "╚═══════════════════════════════════════╝"
+	title := titleStyle.Width(m.width).Render("Direct Git Fetch v2.0")
+	b.WriteString(title)
+	b.WriteString("\n")
 	
-	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, logoStyle.Render(logoText)))
+	// Separator line
+	separatorStyle := lipgloss.NewStyle().Foreground(ColorBorder)
+	separator := separatorStyle.Render(strings.Repeat("─", m.width))
+	b.WriteString(separator)
 	b.WriteString("\n")
 
-	// Breadcrumb bar
+	// Breadcrumb path (centered)
 	breadcrumb := m.state.GetBreadcrumb()
 	if breadcrumb != "" {
-		breadcrumbStyle := lipgloss.NewStyle().
-			Background(ColorBorder).
+		pathStyle := lipgloss.NewStyle().
 			Foreground(ColorBreadcrumb).
-			Bold(true).
-			Padding(0, 2).
-			Width(m.width)
-
-		b.WriteString(breadcrumbStyle.Render("📂 " + breadcrumb))
+			Align(lipgloss.Center)
+		
+		path := pathStyle.Width(m.width).Render(breadcrumb)
+		b.WriteString(path)
 		b.WriteString("\n")
-	} else {
-		// Show helpful message when no repo loaded
-		breadcrumbStyle := lipgloss.NewStyle().
-			Background(ColorBorder).
-			Foreground(ColorSubtle).
-			Italic(true).
-			Padding(0, 2).
-			Width(m.width)
-		b.WriteString(breadcrumbStyle.Render("⚡ Ready to browse GitHub repositories"))
+		b.WriteString(separator)
 		b.WriteString("\n")
 	}
 
@@ -203,7 +197,7 @@ func (m Model) viewBrowser() string {
 	m.selection.SyncWithItems(m.state.Items)
 
 	// Calculate visible area
-	listHeight := m.height - 8 // Leave room for logo, breadcrumb, table header, status
+	listHeight := m.height - 8 // Leave room for title, breadcrumb, table header, status
 	if listHeight < 5 {
 		listHeight = 5
 	}
@@ -215,21 +209,15 @@ func (m Model) viewBrowser() string {
 		m.state.ScrollOffset = m.state.Cursor - listHeight + 1
 	}
 
-	// Render table header with styling
+	// Render table header with clean columns
 	headerStyle := lipgloss.NewStyle().
-		Background(ColorBorder).
 		Foreground(ColorForeground).
-		Bold(true).
-		Width(m.width)
+		Bold(true)
 	
-	tableHeader := fmt.Sprintf("  %-4s %-2s %-40s %-10s", "SEL", "T", "NAME", "SIZE")
+	// Column layout: SELECT (6) | NAME (40) | FILE TYPE (15) | SIZE (10)
+	tableHeader := fmt.Sprintf("%-6s %-40s %-15s %10s", "SELECT", "NAME", "FILE TYPE", "SIZE")
 	b.WriteString(headerStyle.Render(tableHeader))
 	b.WriteString("\n")
-	
-	// Add separator line
-	separator := lipgloss.NewStyle().
-		Foreground(ColorBorder).
-		Render(strings.Repeat("─", m.width))
 	b.WriteString(separator)
 	b.WriteString("\n")
 
@@ -289,27 +277,24 @@ func (m Model) renderItem(item types.RepoItem, isCursor bool, icons IconSet) str
 		selectionStyle = lipgloss.NewStyle().Foreground(ColorSelected).Bold(true)
 	}
 
-	// Icon and name with appropriate styling
-	var icon, name string
+	// Get file type and icon
+	fileType, fileIcon := GetFileTypeAndIcon(item.Name, item.IsDir())
+	
+	// Name styling
 	nameStyle := FileStyle
 	if item.IsDir() {
-		icon = icons.Folder
 		nameStyle = FolderStyle
-		name = item.Name + "/"
-	} else {
-		icon = icons.File
-		if item.IsLFS {
-			icon = icons.LFS
-			nameStyle = lipgloss.NewStyle().Foreground(ColorLFS).Bold(true)
-		}
-		name = item.Name
+	}
+	if item.IsLFS {
+		fileIcon = icons.LFS
+		fileType = "lfs"
+		nameStyle = lipgloss.NewStyle().Foreground(ColorLFS).Bold(true)
 	}
 
-	// Apply highlighting if searching
-	if m.state.SearchQuery != "" {
-		name = m.highlightMatches(name, nameStyle, isCursor)
-	} else {
-		name = nameStyle.Render(name)
+	// Format name with icon
+	displayName := fileIcon + " " + item.Name
+	if len(displayName) > 38 {
+		displayName = displayName[:35] + "..."
 	}
 
 	// Size display
@@ -317,40 +302,36 @@ func (m Model) renderItem(item types.RepoItem, isCursor bool, icons IconSet) str
 	sizeStyle := lipgloss.NewStyle().Foreground(ColorSubtle)
 	if item.IsFile() {
 		sizeStr = utils.FormatBytes(item.Size)
-		if item.Size > 1024*1024 { // > 1MB
+		if item.Size > 10*1024*1024 { // > 10MB
 			sizeStyle = lipgloss.NewStyle().Foreground(ColorWarning)
+		}
+		if item.Size > 50*1024*1024 { // > 50MB
+			sizeStyle = lipgloss.NewStyle().Foreground(ColorError).Bold(true)
 		}
 	} else {
 		sizeStr = "—"
 	}
 
-	// Type indicator
-	itemType := "F"
-	typeStyle := lipgloss.NewStyle().Foreground(ColorInfo)
-	if item.IsDir() {
-		itemType = "D"
-		typeStyle = lipgloss.NewStyle().Foreground(ColorFolder).Bold(true)
+	// Format file type
+	if len(fileType) > 13 {
+		fileType = fileType[:13]
 	}
 
-	// Build line with proper spacing
-	displayName := stripANSI(fmt.Sprintf("%s %s", icon, name))
-	if len(displayName) > 40 {
-		displayName = displayName[:37] + "..."
-	}
-	
-	lineContent := fmt.Sprintf("%s %s %-40s %s",
+	// Build line with proper column spacing: SELECT (6) | NAME (40) | FILE TYPE (15) | SIZE (10)
+	lineContent := fmt.Sprintf("%-6s %-40s %-15s %10s",
 		selectionStyle.Render(selectionMarker),
-		typeStyle.Render(itemType),
-		displayName,
-		sizeStyle.Render(fmt.Sprintf("%10s", sizeStr)))
+		nameStyle.Render(displayName),
+		fileType,
+		sizeStyle.Render(sizeStr))
 
 	// Apply cursor highlighting
 	if isCursor {
-		return CursorStyle.Width(m.width).Render(" "+lineContent+" ")
+		return CursorStyle.Width(m.width).Render(lineContent)
 	}
 
-	return "  " + lineContent
+	return lineContent
 }
+
 
 // highlightMatches highlights search query characters in the text
 func (m Model) highlightMatches(text string, baseStyle lipgloss.Style, isCursor bool) string {
@@ -436,13 +417,11 @@ func (m Model) renderStatusBar(_ IconSet) string {
 		center = append(center, StatusBarStyle.Foreground(ColorSubtle).Render("• "+m.state.DownloadPath))
 	}
 
-	// Right: Key hints (compact)
+	// Right: Key hints (essential only - user can press ? for full help)
 	hints := []string{
-		StatusKeyStyle.Render("K") + ":sel",
-		StatusKeyStyle.Render("L") + ":open",
-		StatusKeyStyle.Render("J") + ":back",
-		StatusKeyStyle.Render("⏎") + ":dl",
-		StatusKeyStyle.Render("I") + ":inv",
+		StatusKeyStyle.Render("D") + ":download",
+		StatusKeyStyle.Render("⏎") + ":open",
+		StatusKeyStyle.Render("Esc") + ":back",
 		StatusKeyStyle.Render("?") + ":help",
 	}
 	right = append(right, strings.Join(hints, " "))
@@ -644,7 +623,7 @@ func (m Model) viewHelp() string {
 		Padding(0, 2).
 		Width(m.width - 8)
 	
-	b.WriteString(headerStyle.Render("⌨️  DGF Keyboard Shortcuts & Help"))
+	b.WriteString(headerStyle.Render("DGF Keyboard Shortcuts & Help"))
 	b.WriteString("\n\n")
 
 	// Sections with enhanced styling
@@ -666,17 +645,17 @@ func (m Model) viewHelp() string {
 		bindings []struct{ key, desc string }
 	}{
 		{
-			name: "🧭 Navigation",
+			name: "Navigation",
 			bindings: []struct{ key, desc string }{
 				{"↑ / ↓", "Move cursor up/down"},
 				{"Home / g", "Jump to top"},
 				{"End / G", "Jump to bottom"},
-				{"J / ←", "Go back to parent folder"},
-				{"L / →", "Enter selected folder"},
+				{"J / ← / Esc", "Go back to parent folder"},
+				{"L / → / Enter", "Enter selected folder"},
 			},
 		},
 		{
-			name: "✓ Selection",
+			name: "Selection",
 			bindings: []struct{ key, desc string }{
 				{"K / Space", "Toggle selection of current item"},
 				{"a", "Select all items"},
@@ -685,18 +664,20 @@ func (m Model) viewHelp() string {
 			},
 		},
 		{
-			name: "⚡ Actions",
+			name: "Actions",
 			bindings: []struct{ key, desc string }{
-				{"Enter", "Download selected items"},
+				{"D / Shift+Enter", "Download selected items"},
 				{"p", "Preview file content"},
 				{"/", "Search files"},
 				{"r", "Refresh current view"},
 				{"o", "Toggle icon mode (emoji/ASCII)"},
 				{"y", "Copy current item path to clipboard"},
+				{"C", "Specify commit ID"},
+				{"B", "Select branch"},
 			},
 		},
 		{
-			name: "ℹ️  General",
+			name: "General",
 			bindings: []struct{ key, desc string }{
 				{"?", "Toggle this help screen"},
 				{"Esc", "Cancel/Close/Back"},
@@ -717,7 +698,7 @@ func (m Model) viewHelp() string {
 	}
 
 	// Tips section
-	b.WriteString(sectionTitleStyle.Render("💡 Tips"))
+	b.WriteString(sectionTitleStyle.Render("Tips"))
 	b.WriteString("\n")
 	
 	tipStyle := lipgloss.NewStyle().
@@ -728,7 +709,7 @@ func (m Model) viewHelp() string {
 		"• Use [●] markers to see which items are selected",
 		"• Download directory can be set via 'dgf config set download_path <path>'",
 		"• Support for GitHub tokens: 'dgf config set github_token <token>'",
-		"• Press Enter twice when downloading to confirm your selection",
+		"• Directories are cached in memory - navigating back is instant",
 		"• Search is case-insensitive and matches filenames",
 	}
 	
@@ -771,7 +752,7 @@ func (m Model) viewDownload() string {
 		Foreground(ColorSuccess).
 		Bold(true)
 	
-	b.WriteString(titleStyle.Render("⬇️  Downloading Files"))
+	b.WriteString(titleStyle.Render("Downloading Files"))
 	b.WriteString("\n\n")
 
 	// Progress bar with enhanced visuals

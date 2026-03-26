@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"strings"
+	
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -242,3 +244,123 @@ func GetIcons(ascii bool) IconSet {
 	}
 	return EmojiIcons
 }
+
+// GetFileTypeAndIcon returns the file type string and icon based on file extension
+func GetFileTypeAndIcon(filename string, isDir bool) (string, string) {
+	if isDir {
+		return "directory", "📁"
+	}
+	
+	// Extract extension
+	ext := ""
+	for i := len(filename) - 1; i >= 0; i-- {
+		if filename[i] == '.' {
+			ext = filename[i+1:]
+			break
+		}
+	}
+	ext = strings.ToLower(ext)
+	
+	// Map extensions to types and icons
+	switch ext {
+	// Images
+	case "jpg", "jpeg", "png", "gif", "bmp", "webp", "svg", "ico":
+		return "image", "🖼️"
+	
+	// Videos
+	case "mp4", "avi", "mkv", "mov", "wmv", "flv", "webm":
+		return "video", "🎬"
+	
+	// Audio
+	case "mp3", "wav", "ogg", "m4a", "flac":
+		return "audio", "🎵"
+	
+	// Documents
+	case "pdf":
+		return "pdf", "📕"
+	case "doc", "docx":
+		return "word", "📘"
+	case "xls", "xlsx":
+		return "excel", "📗"
+	case "ppt", "pptx":
+		return "powerpoint", "📙"
+	case "txt", "md", "markdown":
+		return "text", "📝"
+	
+	// Programming Languages
+	case "go":
+		return "golang", "🐹"
+	case "py":
+		return "python", "🐍"
+	case "js", "jsx":
+		return "javascript", "📜"
+	case "ts", "tsx":
+		return "typescript", "📘"
+	case "java":
+		return "java", "☕"
+	case "c", "cpp", "cc", "h", "hpp":
+		return "c/c++", "⚙️"
+	case "rs":
+		return "rust", "🦀"
+	case "rb":
+		return "ruby", "💎"
+	case "php":
+		return "php", "🐘"
+	case "swift":
+		return "swift", "🦅"
+	case "kt":
+		return "kotlin", "🅺"
+	case "cs":
+		return "c#", "🔷"
+	
+	// Data & Config
+	case "json":
+		return "json", "📋"
+	case "xml":
+		return "xml", "📰"
+	case "yaml", "yml":
+		return "yaml", "📄"
+	case "toml":
+		return "toml", "📄"
+	case "ini", "conf", "config":
+		return "config", "⚙️"
+	
+	// Database
+	case "sql":
+		return "sql", "🗄️"
+	case "db", "sqlite", "sqlite3":
+		return "database", "💾"
+	
+	// Archives
+	case "zip", "tar", "gz", "rar", "7z":
+		return "archive", "📦"
+	
+	// Web
+	case "html", "htm":
+		return "html", "🌐"
+	case "css", "scss", "sass", "less":
+		return "stylesheet", "🎨"
+	
+	// Shell/Scripts
+	case "sh", "bash", "zsh":
+		return "shell", "🐚"
+	case "bat", "cmd", "ps1":
+		return "script", "📜"
+	
+	// Misc
+	case "exe", "bin", "app":
+		return "executable", "⚡"
+	case "dll", "so", "dylib":
+		return "library", "📚"
+	case "log":
+		return "log", "📃"
+	case "env":
+		return "env", "🔐"
+	case "lock":
+		return "lockfile", "🔒"
+	
+	default:
+		return "file", "📄"
+	}
+}
+

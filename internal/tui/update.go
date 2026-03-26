@@ -110,6 +110,20 @@ func (m *Model) fetchRepository(url string) tea.Cmd {
 
 // navigateToFolder navigates into a folder
 func (m *Model) navigateToFolder(path string) tea.Cmd {
+	// Check if we have this directory cached
+	cacheKey := m.state.Owner + "/" + m.state.Repo + ":" + m.state.GetRef() + ":" + path
+	if cachedItems, exists := m.state.DirCache[cacheKey]; exists {
+		// Use cached items immediately
+		m.state.Items = cachedItems
+		m.state.Path = path
+		m.state.Cursor = 0
+		m.state.ScrollOffset = 0
+		m.state.SetMode(types.ModeBrowse)
+		m.selection.SyncWithItems(m.state.Items)
+		return nil
+	}
+	
+	// Not cached, fetch from API
 	m.state.SetMode(types.ModeLoading)
 	m.state.Path = path
 	m.state.Cursor = 0
@@ -122,6 +136,12 @@ func (m *Model) navigateToFolder(path string) tea.Cmd {
 			m.state.GetRef(),
 			path,
 		)
+		
+		// Cache the result if successful
+		if err == nil && items != nil {
+			m.state.DirCache[cacheKey] = items
+		}
+		
 		return fetchDoneMsg{items: items, err: err}
 	}
 }

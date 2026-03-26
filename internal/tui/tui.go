@@ -338,25 +338,26 @@ func (m *Model) handleBrowseKeys(key string) tea.Cmd {
 		m.state.ShowToast("Selection cleared", types.ToastInfo)
 		m.state.ConfirmDownload = false
 		m.state.ConfirmInverseSelection = false
-	case "l", "L", "right":
+	case "l", "L", "right", "enter":
+		// Enter or L/right arrow: navigate into folder
 		if item := m.state.CurrentItem(); item != nil && item.IsDir() {
 			m.state.PushNavigation()
 			return m.navigateToFolder(item.Path)
 		}
 		m.state.ConfirmDownload = false
 		m.state.ConfirmInverseSelection = false
-	case "j", "J", "left":
+	case "j", "J", "left", "esc":
+		// Esc or J/left arrow: navigate back to parent
 		m.state.ConfirmDownload = false
 		m.state.ConfirmInverseSelection = false
 		return m.navigateBack()
-	case "enter":
+	case "d", "D", "shift+enter":
+		// D or Shift+Enter: download selected items
 		if !m.selection.HasSelection() {
-			m.state.ShowToast("No items selected", types.ToastWarning)
+			m.state.ShowToast("No items selected - use K/space to select", types.ToastWarning)
 			return nil
 		}
 		return m.startDownload()
-	case "d":
-		m.state.ShowToast("Use Enter to download selected items", types.ToastInfo)
 	case "o", "O":
 		m.state.ASCIIMode = !m.state.ASCIIMode
 		mode := "emoji"

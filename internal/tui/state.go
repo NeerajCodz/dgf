@@ -28,6 +28,9 @@ type AppState struct {
 	Items        []types.RepoItem
 	FilteredItems []types.RepoItem
 	FullTree     []types.RepoItem
+	
+	// Directory cache to avoid refetching
+	DirCache     map[string][]types.RepoItem
 
 	// Selection
 	SelectedPaths map[string]bool
@@ -81,6 +84,7 @@ func NewAppState() *AppState {
 		NavigationStack: make([]types.NavigationEntry, 0),
 		Items:           make([]types.RepoItem, 0),
 		FilteredItems:   make([]types.RepoItem, 0),
+		DirCache:        make(map[string][]types.RepoItem),
 		Config:          types.DefaultConfig(),
 	}
 }
