@@ -269,68 +269,74 @@ func (m Model) viewBrowser() string {
 
 // renderItem renders a single file/folder item with enhanced styling
 func (m Model) renderItem(item types.RepoItem, isCursor bool, icons IconSet) string {
-	// Selection marker with color
+	// Selection marker
 	selectionMarker := "[ ]"
-	selectionStyle := lipgloss.NewStyle().Foreground(ColorSubtle)
+	selColor := ColorSubtle
 	if item.Selected {
 		selectionMarker = "[●]"
-		selectionStyle = lipgloss.NewStyle().Foreground(ColorSelected).Bold(true)
+		selColor = ColorSelected
 	}
 
 	// Get file type and icon
 	fileType, fileIcon := GetFileTypeAndIcon(item.Name, item.IsDir())
 	
 	// Name styling
-	nameStyle := FileStyle
+	nameColor := ColorFile
 	if item.IsDir() {
-		nameStyle = FolderStyle
+		nameColor = ColorFolder
 	}
 	if item.IsLFS {
 		fileIcon = icons.LFS
 		fileType = "lfs"
-		nameStyle = lipgloss.NewStyle().Foreground(ColorLFS).Bold(true)
+		nameColor = ColorLFS
 	}
 
-	// Format name with icon
+	// Format name with icon (40 chars total including icon)
 	displayName := fileIcon + " " + item.Name
-	if len(displayName) > 38 {
-		displayName = displayName[:35] + "..."
+	nameLimit := 38
+	if len(displayName) > nameLimit {
+		// Account for emoji width
+		displayName = displayName[:nameLimit-3] + "..."
 	}
 
 	// Size display
 	var sizeStr string
-	sizeStyle := lipgloss.NewStyle().Foreground(ColorSubtle)
+	sizeColor := ColorSubtle
 	if item.IsFile() {
 		sizeStr = utils.FormatBytes(item.Size)
 		if item.Size > 10*1024*1024 { // > 10MB
-			sizeStyle = lipgloss.NewStyle().Foreground(ColorWarning)
+			sizeColor = ColorWarning
 		}
 		if item.Size > 50*1024*1024 { // > 50MB
-			sizeStyle = lipgloss.NewStyle().Foreground(ColorError).Bold(true)
+			sizeColor = ColorError
 		}
 	} else {
 		sizeStr = "—"
 	}
 
-	// Format file type
+	// Truncate file type if needed
 	if len(fileType) > 13 {
 		fileType = fileType[:13]
 	}
 
-	// Build line with proper column spacing: SELECT (6) | NAME (40) | FILE TYPE (15) | SIZE (10)
-	lineContent := fmt.Sprintf("%-6s %-40s %-15s %10s",
-		selectionStyle.Render(selectionMarker),
-		nameStyle.Render(displayName),
-		fileType,
-		sizeStyle.Render(sizeStr))
+	// Build line with proper spacing
+	// SELECT (6) | NAME (40) | FILE TYPE (15) | SIZE (10)
+	selPart := lipgloss.NewStyle().Foreground(selColor).Bold(item.Selected).Render(selectionMarker)
+	namePart := lipgloss.NewStyle().Foreground(nameColor).Bold(item.IsDir()).Render(displayName)
+	typePart := fileType
+	sizePart := lipgloss.NewStyle().Foreground(sizeColor).Render(sizeStr)
+	
+	// Pad to exact widths
+	line := fmt.Sprintf("%-6s %-40s %-15s %10s", selPart, namePart, typePart, sizePart)
 
 	// Apply cursor highlighting
 	if isCursor {
-		return CursorStyle.Width(m.width).Render(lineContent)
+		return CursorStyle.Width(m.width).Render(line)
 	}
 
-	return lineContent
+	return line
 }
+
 
 
 // highlightMatches highlights search query characters in the text
