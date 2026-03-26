@@ -28,11 +28,9 @@ func (m Model) viewInput() string {
 		"",
 		"DIRECT GIT FETCH v2.0",
 	}
-	logoStyle := lipgloss.NewStyle().Foreground(ColorLogo).Bold(true)
-	for _, line := range logoLines {
-		b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, logoStyle.Render(line)))
-		b.WriteString("\n")
-	}
+	logoBlock := strings.Join(logoLines, "\n")
+	logoStyle := lipgloss.NewStyle().Foreground(ColorLogo).Bold(true).Align(lipgloss.Center)
+	b.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, logoStyle.Render(logoBlock)))
 	b.WriteString("\n")
 
 	// Selected context (repo/branch/commit) on home
