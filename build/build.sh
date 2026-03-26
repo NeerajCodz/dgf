@@ -7,8 +7,11 @@ cd "$(dirname "$0")/.."
 
 PROJECT_NAME="dgf"
 VERSION="2.0.0"
-OUT_DIR="./build"
+OUT_DIR="./build/v2.0"
 mkdir -p "${OUT_DIR}"
+
+# Replace previous artifacts for this version
+rm -f "${OUT_DIR}"/*
 
 # Pure Go binaries
 export CGO_ENABLED=0

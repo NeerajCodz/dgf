@@ -5,3 +5,8 @@ venv/
 .env
 dgf.exe
 dgf-cli.exe
+dgf-cli.exe~
+build/**
+!build/.gitkeep
+!build/v2.0/
+!build/v2.0/.gitkeep

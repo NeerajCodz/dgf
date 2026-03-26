@@ -6,12 +6,15 @@ Push-Location (Split-Path -Parent $PSScriptRoot)
 
 $PROJECT_NAME = "dgf"
 $VERSION = "2.0.0"
-$OUT_DIR = "./build"
+$OUT_DIR = "./build/v2.0"
 
 # Create output directory if it doesn't exist
 if (-not (Test-Path $OUT_DIR)) {
     New-Item -ItemType Directory -Path $OUT_DIR -Force | Out-Null
 }
+
+# Replace previous artifacts for this version
+Get-ChildItem -Path $OUT_DIR -File -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 
 # Pure Go binaries - set CGO_ENABLED=0
 $env:CGO_ENABLED = 0
